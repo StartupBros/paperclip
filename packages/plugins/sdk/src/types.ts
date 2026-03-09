@@ -828,13 +828,18 @@ export interface PluginIssuesClient {
 }
 
 /**
- * `ctx.agents` — read agent metadata.
+ * `ctx.agents` — read and manage agents.
  *
- * Requires `agents.read`.
+ * Requires `agents.read` for reads; `agents.pause` / `agents.resume`
+ * for lifecycle operations.
  */
 export interface PluginAgentsClient {
   list(input: { companyId: string; status?: Agent["status"]; limit?: number; offset?: number }): Promise<Agent[]>;
   get(agentId: string, companyId: string): Promise<Agent | null>;
+  /** Pause an agent. Throws if agent is terminated or not found. Requires `agents.pause`. */
+  pause(agentId: string, companyId: string): Promise<Agent>;
+  /** Resume a paused agent (sets status to idle). Throws if terminated, pending_approval, or not found. Requires `agents.resume`. */
+  resume(agentId: string, companyId: string): Promise<Agent>;
 }
 
 /**
@@ -927,7 +932,7 @@ export interface PluginContext {
   /** Read and write issues/comments. Requires issue capabilities. */
   issues: PluginIssuesClient;
 
-  /** Read agent metadata. Requires `agents.read`. */
+  /** Read and manage agents. Requires `agents.read` for reads; `agents.pause` / `agents.resume` for lifecycle ops. */
   agents: PluginAgentsClient;
 
   /** Read goal metadata. Requires `goals.read`. */

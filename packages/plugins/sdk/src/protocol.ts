@@ -603,6 +603,16 @@ export interface WorkerToHostMethods {
     result: unknown | null,
   ];
 
+  // Agents (write)
+  "agents.pause": [
+    params: { agentId: string; companyId: string },
+    result: unknown,
+  ];
+  "agents.resume": [
+    params: { agentId: string; companyId: string },
+    result: unknown,
+  ];
+
   // Goals (read)
   "goals.list": [
     params: { companyId: string; level?: string; status?: string; limit?: number; offset?: number },

@@ -318,6 +318,8 @@ export const PLUGIN_CAPABILITIES = [
   "issues.create",
   "issues.update",
   "issue.comments.create",
+  "agents.pause",
+  "agents.resume",
   "assets.write",
   "assets.read",
   "activity.log.write",

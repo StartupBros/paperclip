@@ -623,6 +623,14 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
         async get(agentId: string, companyId: string) {
           return callHost("agents.get", { agentId, companyId }) as any;
         },
+
+        async pause(agentId: string, companyId: string) {
+          return callHost("agents.pause", { agentId, companyId }) as any;
+        },
+
+        async resume(agentId: string, companyId: string) {
+          return callHost("agents.resume", { agentId, companyId }) as any;
+        },
       },
 
       goals: {
