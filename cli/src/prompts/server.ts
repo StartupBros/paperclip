@@ -139,12 +139,14 @@ export async function promptServer(opts?: {
     }
     auth = {
       baseUrlMode: "explicit",
+      disableSignUp: false,
       publicBaseUrl: urlInput.trim().replace(/\/+$/, ""),
       disableSignUp: false,
     };
   } else if (currentAuth?.baseUrlMode === "explicit" && currentAuth.publicBaseUrl) {
     auth = {
       baseUrlMode: "explicit",
+      disableSignUp: false,
       publicBaseUrl: currentAuth.publicBaseUrl,
       disableSignUp: false,
     };
