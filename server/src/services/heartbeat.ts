@@ -936,6 +936,13 @@ export function heartbeatService(db: Db) {
     } catch (err) {
       logger.error({ err, agentId, outcome }, "Trust evaluation failed");
     }
+
+    // Trust evaluation — non-blocking, errors logged but don't prevent status update
+    try {
+      await trustSvc.evaluateTrust(agentId, outcome);
+    } catch (err) {
+      logger.error({ err, agentId, outcome }, "Trust evaluation failed");
+    }
   }
 
   async function reapOrphanedRuns(opts?: { staleThresholdMs?: number }) {

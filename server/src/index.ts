@@ -25,7 +25,7 @@ import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { logger } from "./middleware/logger.js";
 import { setupLiveEventsWebSocketServer } from "./realtime/live-events-ws.js";
-import { heartbeatService } from "./services/index.js";
+import { heartbeatService, notificationService, subscribeAllLiveEvents } from "./services/index.js";
 import { createStorageServiceFromConfig } from "./storage/index.js";
 import { printStartupBanner } from "./startup-banner.js";
 import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-claim.js";
@@ -494,7 +494,15 @@ export async function startServer(): Promise<StartedServer> {
     deploymentMode: config.deploymentMode,
     resolveSessionFromHeaders,
   });
-  
+
+  // Global notification dispatch — subscribe once, handles all companies
+  const notifSvc = notificationService(db as any);
+  subscribeAllLiveEvents((event) => {
+    notifSvc.dispatchNotification(event).catch((err) => {
+      logger.error({ err }, "notification dispatch error");
+    });
+  });
+
   if (config.heartbeatSchedulerEnabled) {
     const heartbeat = heartbeatService(db as any);
   
