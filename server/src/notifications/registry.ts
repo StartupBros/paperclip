@@ -2,6 +2,7 @@ import type { NotificationEvent } from "@paperclipai/shared";
 import * as webhook from "@paperclipai/notifier-webhook";
 import * as discord from "@paperclipai/notifier-discord";
 import * as ntfy from "@paperclipai/notifier-ntfy";
+import * as telnyxSms from "@paperclipai/notifier-telnyx-sms";
 
 export interface NotificationChannelBackend {
   type: string;
@@ -14,6 +15,7 @@ const backendsByType = new Map<string, NotificationChannelBackend>([
   [webhook.type, webhook],
   [discord.type, discord],
   [ntfy.type, ntfy],
+  [telnyxSms.type, telnyxSms],
 ]);
 
 export function getBackend(type: string): NotificationChannelBackend | undefined {

@@ -236,7 +236,7 @@ export type JoinRequestType = (typeof JOIN_REQUEST_TYPES)[number];
 export const JOIN_REQUEST_STATUSES = ["pending_approval", "approved", "rejected"] as const;
 export type JoinRequestStatus = (typeof JOIN_REQUEST_STATUSES)[number];
 
-export const NOTIFICATION_CHANNEL_TYPES = ["webhook", "discord", "ntfy"] as const;
+export const NOTIFICATION_CHANNEL_TYPES = ["webhook", "discord", "ntfy", "telnyx_sms"] as const;
 export type NotificationChannelType = (typeof NOTIFICATION_CHANNEL_TYPES)[number];
 
 export const NOTIFICATION_EVENT_TYPES = [

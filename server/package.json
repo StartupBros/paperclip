@@ -41,6 +41,7 @@
     "@paperclipai/notifier-webhook": "workspace:*",
     "@paperclipai/notifier-discord": "workspace:*",
     "@paperclipai/notifier-ntfy": "workspace:*",
+    "@paperclipai/notifier-telnyx-sms": "workspace:*",
     "@paperclipai/db": "workspace:*",
     "@paperclipai/shared": "workspace:*",
     "better-auth": "1.4.18",
