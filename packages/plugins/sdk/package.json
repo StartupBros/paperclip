@@ -99,9 +99,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "pnpm --filter @paperclipai/shared build && tsc",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "pnpm --filter @paperclipai/shared build && tsc --noEmit",
     "dev:server": "tsx src/dev-cli.ts"
   },
   "dependencies": {
