@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { approvalComments, approvals } from "@paperclipai/db";
+import { approvalComments, approvals, companies } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { agentService } from "./agents.js";
 import { logActivity } from "./activity-log.js";
@@ -114,6 +114,41 @@ export function approvalService(db: Db) {
           },
         });
         return approved;
+      }
+    }
+
+    // Auto-approve action type if the agent opts in and conditions are met.
+    if (
+      approval.type === "action" &&
+      approval.autoApproveIfTrusted &&
+      data.requestedByAgentId
+    ) {
+      const requester = await agentsSvc.getById(data.requestedByAgentId);
+      if (requester?.companyId === companyId && requester.trustLevel === "autonomous") {
+        const company = await db
+          .select({ requireHumanApprovalForAllActions: companies.requireHumanApprovalForAllActions })
+          .from(companies)
+          .where(eq(companies.id, companyId))
+          .then((rows) => rows[0]);
+
+        if (company && !company.requireHumanApprovalForAllActions) {
+          const approved = await approve(approval.id, null, "Auto-approved: autonomous trust level");
+          await logActivity(db, {
+            companyId,
+            actorType: "system",
+            actorId: data.requestedByAgentId,
+            agentId: data.requestedByAgentId,
+            action: "approval.approved",
+            entityType: "approval",
+            entityId: approved.id,
+            details: {
+              type: approved.type,
+              trigger: "trust_auto_approve",
+              requestedByAgentId: data.requestedByAgentId,
+            },
+          });
+          return approved;
+        }
       }
     }
 
