@@ -15,6 +15,7 @@ import {
   updateAgentInstructionsPathSchema,
   wakeAgentSchema,
   updateAgentSchema,
+  setAgentTrustSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import {
@@ -26,6 +27,7 @@ import {
   issueService,
   logActivity,
   secretService,
+  trustService,
 } from "../services/index.js";
 import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
@@ -55,6 +57,7 @@ export function agentRoutes(db: Db) {
   const heartbeat = heartbeatService(db);
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
+  const trustSvc = trustService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
 
   function canCreateAgents(agent: { role: string; permissions: Record<string, unknown> | null | undefined }) {
@@ -1022,6 +1025,43 @@ export function agentRoutes(db: Db) {
     });
 
     res.json(agent);
+  });
+
+  router.patch("/agents/:id/trust", validate(setAgentTrustSchema), async (req, res) => {
+    assertBoard(req);
+    const id = req.params.id as string;
+    const agent = await svc.getById(id);
+    if (!agent) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertCompanyAccess(req, agent.companyId);
+
+    const actorId = req.actor.userId ?? "board";
+    await trustSvc.setTrustLevel(id, agent.companyId, req.body.trustLevel, actorId);
+
+    const updated = await svc.getById(id);
+    res.json(updated);
+  });
+
+  router.get("/agents/:id/trust-progress", async (req, res) => {
+    const id = req.params.id as string;
+    const agent = await svc.getById(id);
+    if (!agent) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertCompanyAccess(req, agent.companyId);
+
+    const consecutiveSuccesses = await trustSvc.countConsecutiveSuccesses(id);
+    const recentFailures = await trustSvc.countRecentFailures(id);
+
+    res.json({
+      trustLevel: agent.trustLevel,
+      trustManuallySetAt: agent.trustManuallySetAt,
+      consecutiveSuccesses,
+      recentFailures,
+    });
   });
 
   router.post("/agents/:id/pause", async (req, res) => {
