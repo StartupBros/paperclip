@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { approvalComments, approvals } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { agentService } from "./agents.js";
+import { logActivity } from "./activity-log.js";
 import { notifyHireApproved } from "./hire-hook.js";
 
 export function approvalService(db: Db) {
@@ -97,7 +98,22 @@ export function approvalService(db: Db) {
     if (approval.type === "hire_agent" && data.requestedByAgentId) {
       const requester = await agentsSvc.getById(data.requestedByAgentId);
       if (requester?.companyId === companyId && requester.trustLevel === "autonomous") {
-        return approve(approval.id, null, "Auto-approved: autonomous trust level");
+        const approved = await approve(approval.id, null, "Auto-approved: autonomous trust level");
+        await logActivity(db, {
+          companyId,
+          actorType: "system",
+          actorId: data.requestedByAgentId,
+          agentId: data.requestedByAgentId,
+          action: "approval.approved",
+          entityType: "approval",
+          entityId: approved.id,
+          details: {
+            type: approved.type,
+            trigger: "trust_auto_approve",
+            requestedByAgentId: data.requestedByAgentId,
+          },
+        });
+        return approved;
       }
     }
 
