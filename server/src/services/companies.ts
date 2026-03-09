@@ -105,6 +105,7 @@ export function companyService(db: Db) {
         // Tables with FK refs must be deleted before the tables they reference.
         // activity_log refs heartbeat_runs.id and agents.id — must precede both.
         // issue_read_states refs issues.id (no cascade) — must precede issues.
+        // projects refs goals.id (no cascade) — must precede goals.
         // assets refs agents.id (no cascade) — must precede agents.
         await tx.delete(heartbeatRunEvents).where(eq(heartbeatRunEvents.companyId, id));
         await tx.delete(agentTaskSessions).where(eq(agentTaskSessions.companyId, id));
@@ -124,8 +125,8 @@ export function companyService(db: Db) {
         await tx.delete(companyMemberships).where(eq(companyMemberships.companyId, id));
         await tx.delete(issueReadStates).where(eq(issueReadStates.companyId, id));
         await tx.delete(issues).where(eq(issues.companyId, id));
-        await tx.delete(goals).where(eq(goals.companyId, id));
         await tx.delete(projects).where(eq(projects.companyId, id));
+        await tx.delete(goals).where(eq(goals.companyId, id));
         await tx.delete(assets).where(eq(assets.companyId, id));
         await tx.delete(agents).where(eq(agents.companyId, id));
         const rows = await tx
