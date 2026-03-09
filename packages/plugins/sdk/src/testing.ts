@@ -430,6 +430,27 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         const agent = agents.get(agentId);
         return isInCompany(agent, companyId) ? agent : null;
       },
+      async pause(agentId, companyId) {
+        requireCapability(manifest, capabilitySet, "agents.pause");
+        const cid = requireCompanyId(companyId);
+        const agent = agents.get(agentId);
+        if (!isInCompany(agent, cid)) throw new Error(`Agent not found: ${agentId}`);
+        if (agent!.status === "terminated") throw new Error("Cannot pause terminated agent");
+        const updated: Agent = { ...agent!, status: "paused", updatedAt: new Date() };
+        agents.set(agentId, updated);
+        return updated;
+      },
+      async resume(agentId, companyId) {
+        requireCapability(manifest, capabilitySet, "agents.resume");
+        const cid = requireCompanyId(companyId);
+        const agent = agents.get(agentId);
+        if (!isInCompany(agent, cid)) throw new Error(`Agent not found: ${agentId}`);
+        if (agent!.status === "terminated") throw new Error("Cannot resume terminated agent");
+        if (agent!.status === "pending_approval") throw new Error("Pending approval agents cannot be resumed");
+        const updated: Agent = { ...agent!, status: "idle", updatedAt: new Date() };
+        agents.set(agentId, updated);
+        return updated;
+      },
     },
     goals: {
       async list(input) {
