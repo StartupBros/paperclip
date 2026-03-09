@@ -187,7 +187,6 @@ function quickstartDefaultsFromEnv(): {
       baseUrlMode: authBaseUrlMode,
       disableSignUp: false,
       ...(authPublicBaseUrl ? { publicBaseUrl: authPublicBaseUrl } : {}),
-      disableSignUp: false,
     },
     storage: {
       provider: storageProvider,
