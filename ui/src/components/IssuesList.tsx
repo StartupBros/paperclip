@@ -92,11 +92,16 @@ function applyFilters(issues: Issue[], state: IssueViewState, currentUserId?: st
   let result = issues;
   if (state.statuses.length > 0) result = result.filter((i) => state.statuses.includes(i.status));
   if (state.priorities.length > 0) result = result.filter((i) => state.priorities.includes(i.priority));
-  if (state.assignees.length > 0) {
+  // Exclude __me from effective assignees while the session is still loading
+  // to avoid showing a blank list with no way to clear the filter.
+  const effectiveAssignees = currentUserId
+    ? state.assignees
+    : state.assignees.filter((a) => a !== "__me");
+  if (effectiveAssignees.length > 0) {
     result = result.filter((i) => {
-      if (state.assignees.includes("__unassigned") && i.assigneeAgentId == null && i.assigneeUserId == null) return true;
-      if (state.assignees.includes("__me") && currentUserId && i.assigneeUserId === currentUserId) return true;
-      if (i.assigneeAgentId != null && state.assignees.includes(i.assigneeAgentId)) return true;
+      if (effectiveAssignees.includes("__unassigned") && i.assigneeAgentId == null && i.assigneeUserId == null) return true;
+      if (effectiveAssignees.includes("__me") && currentUserId && i.assigneeUserId === currentUserId) return true;
+      if (i.assigneeAgentId != null && effectiveAssignees.includes(i.assigneeAgentId)) return true;
       return false;
     });
   }
@@ -175,7 +180,7 @@ export function IssuesList({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
-  const currentUserId = session?.user?.id ?? session?.session?.userId;
+  const currentUserId = session?.user?.id;
 
   // Scope the storage key per company so folding/view state is independent across companies.
   const scopedKey = selectedCompanyId ? `${viewStateKey}:${selectedCompanyId}` : viewStateKey;
@@ -263,14 +268,20 @@ export function IssuesList({
         .filter((p) => groups[p]?.length)
         .map((p) => ({ key: p, label: statusLabel(p), items: groups[p]! }));
     }
-    // assignee
-    const groups = groupBy(filtered, (i) => i.assigneeAgentId ?? "__unassigned");
+    // assignee — group by agent, user, or unassigned
+    const groups = groupBy(filtered, (i) =>
+      i.assigneeAgentId ?? (i.assigneeUserId ? `__user:${i.assigneeUserId}` : "__unassigned"),
+    );
     return Object.keys(groups).map((key) => ({
       key,
-      label: key === "__unassigned" ? "Unassigned" : (agentName(key) ?? key.slice(0, 8)),
+      label: key === "__unassigned"
+        ? "Unassigned"
+        : key.startsWith("__user:")
+          ? (key === `__user:${currentUserId}` ? "Me" : key.slice(7, 15))
+          : (agentName(key) ?? key.slice(0, 8)),
       items: groups[key]!,
     }));
-  }, [filtered, viewState.groupBy, agents]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filtered, viewState.groupBy, agents, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const newIssueDefaults = (groupKey?: string) => {
     const defaults: Record<string, string> = {};
