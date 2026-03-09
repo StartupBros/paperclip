@@ -147,6 +147,7 @@ describe("POST /heartbeat-runs/:runId/dismiss", () => {
     const res = await request(app).post("/heartbeat-runs/run-1/dismiss").send({});
 
     expect(res.status).toBe(200);
+    expect(mockLogActivity).not.toHaveBeenCalled();
   });
 
   it("logs activity on successful dismiss", async () => {

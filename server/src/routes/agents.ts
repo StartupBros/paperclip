@@ -1376,15 +1376,17 @@ export function agentRoutes(db: Db) {
     }
     assertCompanyAccess(req, existing.companyId);
     const run = await heartbeat.dismissRun(runId);
-    await logActivity(db, {
-      companyId: existing.companyId,
-      actorType: "user",
-      actorId: req.actor.userId ?? "board",
-      action: "heartbeat.dismissed",
-      entityType: "heartbeat_run",
-      entityId: existing.id,
-      details: { agentId: existing.agentId },
-    });
+    if (!existing.dismissedAt) {
+      await logActivity(db, {
+        companyId: existing.companyId,
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
+        action: "heartbeat.dismissed",
+        entityType: "heartbeat_run",
+        entityId: existing.id,
+        details: { agentId: existing.agentId },
+      });
+    }
     res.json(run);
   });
 
