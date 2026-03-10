@@ -387,6 +387,21 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       : `Claude exited with code ${proc.exitCode ?? -1}`;
   };
 
+  const classifyFailureCategory = (
+    message: string | null | undefined,
+  ): "rate_limit" | "provider" => {
+    const lower = (message ?? "").toLowerCase();
+    if (
+      lower.includes("rate limit") ||
+      lower.includes("too many requests") ||
+      lower.includes("quota") ||
+      lower.includes("429")
+    ) {
+      return "rate_limit";
+    }
+    return "provider";
+  };
+
   const runAttempt = async (resumeSessionId: string | null) => {
     const args = buildClaudeArgs(resumeSessionId);
     if (onMeta) {
@@ -444,18 +459,21 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         timedOut: true,
         errorMessage: `Timed out after ${timeoutSec}s`,
         errorCode: "timeout",
+        failureCategory: "timeout",
         errorMeta,
         clearSession: Boolean(opts.clearSessionOnMissingSession),
       };
     }
 
     if (!parsed) {
+      const errorMessage = parseFallbackErrorMessage(proc);
       return {
         exitCode: proc.exitCode,
         signal: proc.signal,
         timedOut: false,
-        errorMessage: parseFallbackErrorMessage(proc),
+        errorMessage,
         errorCode: loginMeta.requiresLogin ? "claude_auth_required" : null,
+        failureCategory: loginMeta.requiresLogin ? "auth" : classifyFailureCategory(errorMessage),
         errorMeta,
         resultJson: {
           stdout: proc.stdout,
@@ -489,16 +507,23 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       } as Record<string, unknown>)
       : null;
     const clearSessionForMaxTurns = isClaudeMaxTurnsResult(parsed);
+    const errorMessage =
+      (proc.exitCode ?? 0) === 0
+        ? null
+        : describeClaudeFailure(parsed) ?? `Claude exited with code ${proc.exitCode ?? -1}`;
 
     return {
       exitCode: proc.exitCode,
       signal: proc.signal,
       timedOut: false,
-      errorMessage:
-        (proc.exitCode ?? 0) === 0
-          ? null
-          : describeClaudeFailure(parsed) ?? `Claude exited with code ${proc.exitCode ?? -1}`,
+      errorMessage,
       errorCode: loginMeta.requiresLogin ? "claude_auth_required" : null,
+      failureCategory:
+        errorMessage == null
+          ? null
+          : loginMeta.requiresLogin
+            ? "auth"
+            : classifyFailureCategory(errorMessage),
       errorMeta,
       usage,
       sessionId: resolvedSessionId,

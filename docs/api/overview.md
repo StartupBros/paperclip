@@ -53,6 +53,52 @@ All responses return JSON. Successful responses return the entity directly. Erro
 | `422` | Semantic violation | Invalid state transition (e.g. backlog -> done) |
 | `500` | Server error | Transient failure. Comment on the task and move on. |
 
+## Company Execution Policy
+
+Company settings can define a control-plane execution policy that applies to
+newly started runs.
+
+**`PATCH /api/companies/:companyId`** accepts an optional `executionPolicy`
+object:
+
+```json
+{
+  "executionPolicy": {
+    "mode": "override",
+    "target": {
+      "adapterType": "claude_local",
+      "adapterConfig": {
+        "model": "claude-sonnet-4-6"
+      }
+    },
+    "fallbackChain": [
+      {
+        "adapterType": "codex_local",
+        "adapterConfig": {
+          "model": "gpt-5.3-codex"
+        }
+      }
+    ]
+  }
+}
+```
+
+Rules:
+
+- `mode = default` fills agents that do not have an explicit target
+- `mode = override` forces the company target for newly started runs only
+- running runs keep the target they already resolved
+- fallback only applies when a run fails with a classified `rate_limit`
+- invalid payloads return `422`
+
+Run APIs surface the resolved execution snapshot through:
+
+- `resolvedExecutionTarget`
+- `resolvedExecutionSource`
+- `failureCategory`
+- `retryOfRunId`
+- `retryOrdinal`
+
 ## Plugin Management
 
 Paperclip exposes endpoints for discovering, installing, and managing plugins. All plugin endpoints are scoped under `/api/plugins` and require board-level authentication.

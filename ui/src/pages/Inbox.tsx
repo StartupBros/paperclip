@@ -189,7 +189,9 @@ function FailedRunCard({
 
   const retryRun = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, unknown> = {};
+      const payload: Record<string, unknown> = {
+        retryOfRunId: run.id,
+      };
       const context = run.contextSnapshot as Record<string, unknown> | null;
       if (context) {
         if (typeof context.issueId === "string" && context.issueId) payload.issueId = context.issueId;

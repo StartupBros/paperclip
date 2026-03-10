@@ -830,12 +830,14 @@ export interface PluginIssuesClient {
 /**
  * `ctx.agents` — read and manage agents.
  *
- * Requires `agents.read` for reads; `agents.pause` / `agents.resume`
- * for lifecycle operations.
+ * Requires `agents.read` for reads, `agents.invoke` for ad hoc execution,
+ * and `agents.pause` / `agents.resume` for lifecycle operations.
  */
 export interface PluginAgentsClient {
   list(input: { companyId: string; status?: Agent["status"]; limit?: number; offset?: number }): Promise<Agent[]>;
   get(agentId: string, companyId: string): Promise<Agent | null>;
+  /** Start an ad hoc agent run. Requires `agents.invoke`. */
+  invoke(agentId: string, companyId: string, input: { prompt: string; reason?: string }): Promise<{ runId: string }>;
   /** Pause an agent. Throws if agent is terminated or not found. Requires `agents.pause`. */
   pause(agentId: string, companyId: string): Promise<Agent>;
   /** Resume a paused agent (sets status to idle). Throws if terminated, pending_approval, or not found. Requires `agents.resume`. */
@@ -932,7 +934,7 @@ export interface PluginContext {
   /** Read and write issues/comments. Requires issue capabilities. */
   issues: PluginIssuesClient;
 
-  /** Read and manage agents. Requires `agents.read` for reads; `agents.pause` / `agents.resume` for lifecycle ops. */
+  /** Read and manage agents. Requires `agents.read` for reads, `agents.invoke` for ad hoc execution, and `agents.pause` / `agents.resume` for lifecycle ops. */
   agents: PluginAgentsClient;
 
   /** Read goal metadata. Requires `goals.read`. */

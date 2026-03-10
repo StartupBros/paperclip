@@ -4,6 +4,8 @@ import { companyService } from "../services/companies.js";
 import { issueService } from "../services/issues.js";
 import { logActivity } from "../services/activity-log.js";
 import { projectService } from "../services/projects.js";
+import { agentService } from "../services/agents.js";
+import { heartbeatService } from "../services/heartbeat.js";
 import type { Db } from "@paperclipai/db";
 import type { PluginEventBus } from "../services/plugin-event-bus.js";
 
@@ -14,6 +16,7 @@ vi.mock("../services/plugin-registry.js");
 vi.mock("../services/plugin-state-store.js");
 vi.mock("../services/plugin-secrets-handler.js");
 vi.mock("../services/agents.js");
+vi.mock("../services/heartbeat.js");
 vi.mock("../services/projects.js");
 vi.mock("../services/goals.js");
 vi.mock("../services/activity.js");
@@ -155,5 +158,55 @@ describe("buildHostServices production implementation", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockListComments).not.toHaveBeenCalled();
     expect(mockAddComment).not.toHaveBeenCalled();
+  });
+
+  it("logs plugin-triggered agent invocations", async () => {
+    const mockGetById = vi.fn().mockResolvedValue({
+      id: "agent-1",
+      companyId: "c1",
+      name: "Runner",
+    });
+    const mockInvoke = vi.fn().mockResolvedValue({
+      id: "run-1",
+      companyId: "c1",
+      agentId: "agent-1",
+    });
+    (agentService as any).mockReturnValue({ getById: mockGetById });
+    (heartbeatService as any).mockReturnValue({ invoke: mockInvoke });
+
+    const services = buildHostServices(db, pluginId, pluginKey, eventBus);
+    const result = await services.agents.invoke({
+      companyId: "c1",
+      agentId: "agent-1",
+      prompt: "Run the playbook",
+      reason: "plugin test",
+    });
+
+    expect(result).toEqual({ runId: "run-1" });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "agent-1",
+      "automation",
+      {
+        prompt: "Run the playbook",
+        pluginInvokeReason: "plugin test",
+      },
+      "system",
+    );
+    expect(logActivity).toHaveBeenCalledWith(db, {
+      companyId: "c1",
+      actorType: "plugin",
+      actorId: pluginId,
+      action: "heartbeat.invoked",
+      entityType: "heartbeat_run",
+      entityId: "run-1",
+      agentId: "agent-1",
+      details: {
+        agentId: "agent-1",
+        pluginId,
+        pluginKey,
+        reason: "plugin test",
+        promptLength: "Run the playbook".length,
+      },
+    });
   });
 });

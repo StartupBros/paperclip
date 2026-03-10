@@ -20,6 +20,7 @@ import { assetService } from "./assets.js";
 import { pluginRegistryService } from "./plugin-registry.js";
 import { pluginStateStore } from "./plugin-state-store.js";
 import { createPluginSecretsHandler } from "./plugin-secrets-handler.js";
+import { heartbeatService } from "./heartbeat.js";
 import { logActivity } from "./activity-log.js";
 import type { PluginEventBus } from "./plugin-event-bus.js";
 import { logger } from "../middleware/logger.js";
@@ -87,6 +88,7 @@ export function buildHostServices(
   const activity = activityService(db);
   const costs = costService(db);
   const assets = assetService(db);
+  const heartbeats = heartbeatService(db);
   const scopedBus = eventBus.forPlugin(pluginKey);
 
   const ensureCompanyId = (companyId?: string) => {
@@ -332,6 +334,49 @@ export function buildHostServices(
         const companyId = ensureCompanyId(params.companyId);
         const agent = await agents.getById(params.agentId);
         return (inCompany(agent, companyId) ? agent : null) as Agent | null;
+      },
+      async pause(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        const agent = requireInCompany("Agent", await agents.getById(params.agentId), companyId);
+        return (await agents.pause(agent.id)) as Agent | null;
+      },
+      async resume(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        const agent = requireInCompany("Agent", await agents.getById(params.agentId), companyId);
+        return (await agents.resume(agent.id)) as Agent | null;
+      },
+      async invoke(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        const agent = requireInCompany("Agent", await agents.getById(params.agentId), companyId);
+        const run = await heartbeats.invoke(
+          agent.id,
+          "automation",
+          {
+            prompt: params.prompt,
+            pluginInvokeReason: params.reason ?? null,
+          },
+          "system",
+        );
+        if (!run) {
+          throw new Error("Agent invoke did not create a run");
+        }
+        await logActivity(db, {
+          companyId,
+          actorType: "plugin",
+          actorId: pluginId,
+          action: "heartbeat.invoked",
+          entityType: "heartbeat_run",
+          entityId: run.id,
+          agentId: agent.id,
+          details: {
+            agentId: agent.id,
+            pluginId,
+            pluginKey,
+            reason: params.reason ?? null,
+            promptLength: params.prompt.length,
+          },
+        });
+        return { runId: run.id };
       },
     },
 

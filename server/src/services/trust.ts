@@ -14,7 +14,11 @@ export function trustService(db: Db) {
   async function countConsecutiveSuccesses(agentId: string, threshold?: number): Promise<number> {
     const limit = threshold ?? TRUST_PROMOTION_THRESHOLD;
     const runs = await db
-      .select({ status: heartbeatRuns.status, errorCode: heartbeatRuns.errorCode })
+      .select({
+        status: heartbeatRuns.status,
+        errorCode: heartbeatRuns.errorCode,
+        failureCategory: heartbeatRuns.failureCategory,
+      })
       .from(heartbeatRuns)
       .where(
         and(
@@ -27,7 +31,12 @@ export function trustService(db: Db) {
 
     let count = 0;
     for (const run of runs) {
-      if (run.status === "failed" && run.errorCode === "process_lost") continue;
+      if (
+        run.status === "failed" &&
+        (run.errorCode === "process_lost" || run.failureCategory === "rate_limit")
+      ) {
+        continue;
+      }
       if (run.status !== "succeeded") break;
       count++;
     }
@@ -39,6 +48,7 @@ export function trustService(db: Db) {
       .select({
         status: heartbeatRuns.status,
         errorCode: heartbeatRuns.errorCode,
+        failureCategory: heartbeatRuns.failureCategory,
       })
       .from(heartbeatRuns)
       .where(
@@ -51,7 +61,10 @@ export function trustService(db: Db) {
       .limit(TRUST_DEMOTION_WINDOW_SIZE);
 
     return runs.filter(
-      (r) => r.status === "failed" && r.errorCode !== "process_lost",
+      (r) =>
+        r.status === "failed" &&
+        r.errorCode !== "process_lost" &&
+        r.failureCategory !== "rate_limit",
     ).length;
   }
 

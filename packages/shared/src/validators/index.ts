@@ -1,6 +1,8 @@
 export {
   createCompanySchema,
   updateCompanySchema,
+  executionTargetSchema,
+  companyExecutionPolicySchema,
   type CreateCompany,
   type UpdateCompany,
 } from "./company.js";

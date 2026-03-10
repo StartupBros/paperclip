@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
 import {
+  deriveRetryTargetFromParentRun,
   resolveRuntimeSessionParamsForWorkspace,
   shouldResetTaskSessionForWake,
   type ResolvedWorkspaceForRun,
@@ -139,5 +140,34 @@ describe("shouldResetTaskSessionForWake", () => {
         wakeTriggerDetail: "callback",
       }),
     ).toBe(false);
+  });
+});
+
+describe("deriveRetryTargetFromParentRun", () => {
+  it("reuses the resolved fallback target for manual retries", () => {
+    expect(
+      deriveRetryTargetFromParentRun({
+        resolvedExecutionSource: "company_fallback",
+        resolvedExecutionTarget: {
+          adapterType: "cursor",
+          adapterConfig: { model: "cursor-max" },
+        },
+      }),
+    ).toEqual({
+      adapterType: "cursor",
+      adapterConfig: { model: "cursor-max" },
+    });
+  });
+
+  it("ignores non-fallback parent runs", () => {
+    expect(
+      deriveRetryTargetFromParentRun({
+        resolvedExecutionSource: "company_override",
+        resolvedExecutionTarget: {
+          adapterType: "claude_local",
+          adapterConfig: { model: "claude-sonnet-4-6" },
+        },
+      }),
+    ).toBeNull();
   });
 });

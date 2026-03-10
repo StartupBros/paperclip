@@ -1,6 +1,9 @@
 export const COMPANY_STATUSES = ["active", "paused", "archived"] as const;
 export type CompanyStatus = (typeof COMPANY_STATUSES)[number];
 
+export const COMPANY_EXECUTION_MODES = ["default", "override"] as const;
+export type CompanyExecutionMode = (typeof COMPANY_EXECUTION_MODES)[number];
+
 export const DEPLOYMENT_MODES = ["local_trusted", "authenticated"] as const;
 export type DeploymentMode = (typeof DEPLOYMENT_MODES)[number];
 
@@ -343,6 +346,7 @@ export const PLUGIN_CAPABILITIES = [
   "issues.create",
   "issues.update",
   "issue.comments.create",
+  "agents.invoke",
   "agents.pause",
   "agents.resume",
   "assets.write",

@@ -124,8 +124,14 @@ Human auth tables (`users`, `sessions`, and provider-specific auth artifacts) ar
 - `name` text not null
 - `description` text null
 - `status` enum: `active | paused | archived`
+- `execution_policy` jsonb null
 
 Invariant: every business record belongs to exactly one company.
+
+Execution policy stores an optional company-scoped primary execution target and
+fallback chain. `mode = default` fills agents that do not have an explicit
+target; `mode = override` wins for newly started runs without rewriting agent
+rows.
 
 ## 7.2 `agents`
 
@@ -229,11 +235,20 @@ Invariants:
 - `agent_id` uuid fk not null
 - `invocation_source` enum: `scheduler | manual | callback`
 - `status` enum: `queued | running | succeeded | failed | cancelled | timed_out`
+- `retry_of_run_id` uuid fk `heartbeat_runs.id` null
+- `retry_ordinal` int not null default 0
 - `started_at` timestamptz null
 - `finished_at` timestamptz null
 - `error` text null
+- `failure_category` text null
 - `external_run_id` text null
+- `resolved_execution_target` jsonb null
+- `resolved_execution_source` text null
 - `context_snapshot` jsonb null
+
+Automatic fallback retries are only allowed for classified rate-limit/quota
+failures. Retry attempts remain visible as separate linked rows so operators can
+see the original failure and every follow-up attempt.
 
 ## 7.9 `cost_events`
 
@@ -416,6 +431,37 @@ All endpoints are under `/api` and return JSON.
 - `PATCH /companies/:companyId`
 - `POST /companies/:companyId/archive`
 
+`PATCH /companies/:companyId` accepts an optional `executionPolicy` payload:
+
+```json
+{
+  "executionPolicy": {
+    "mode": "override",
+    "target": {
+      "adapterType": "claude_local",
+      "adapterConfig": {
+        "model": "claude-sonnet-4-6"
+      }
+    },
+    "fallbackChain": [
+      {
+        "adapterType": "codex_local",
+        "adapterConfig": {
+          "model": "gpt-5.3-codex"
+        }
+      }
+    ]
+  }
+}
+```
+
+Validation rules:
+
+- `mode` is `default | override`
+- `override` requires a primary `target`
+- every target references a supported adapter
+- malformed policies return `422`
+
 ## 10.2 Goals
 
 - `GET /companies/:companyId/goals`
@@ -547,6 +593,9 @@ Behavior:
 - stream stdout/stderr to run logs
 - mark run status on exit code/timeout
 - cancel sends SIGTERM then SIGKILL after grace
+- adapters should classify failures conservatively with `failureCategory`
+  (`rate_limit`, `auth`, `timeout`, `config`, `provider`, `unknown`) so the
+  control plane can decide whether fallback retry is safe
 
 ## 11.3 HTTP Adapter
 
@@ -568,6 +617,8 @@ Behavior:
 - 2xx means accepted
 - non-2xx marks failed invocation
 - optional callback endpoint allows asynchronous completion updates
+- HTTP and process adapters should only emit `rate_limit` when the provider
+  signal is explicit; otherwise they fall back to `provider` or `unknown`
 
 ## 11.4 Context Delivery
 
@@ -587,6 +638,10 @@ Scheduler must skip invocation when:
 - agent is paused/terminated
 - an existing run is active
 - hard budget limit has been hit
+
+Execution target resolution happens when a queued run is claimed, not when the
+wakeup is first enqueued. Running runs keep their existing resolved target even
+if the company execution policy changes afterward.
 
 ## 12. Governance and Approval Flows
 

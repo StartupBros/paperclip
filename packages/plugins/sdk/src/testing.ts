@@ -430,6 +430,21 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         const agent = agents.get(agentId);
         return isInCompany(agent, companyId) ? agent : null;
       },
+      async invoke(agentId, companyId, input) {
+        requireCapability(manifest, capabilitySet, "agents.invoke");
+        const cid = requireCompanyId(companyId);
+        const agent = agents.get(agentId);
+        if (!isInCompany(agent, cid)) throw new Error(`Agent not found: ${agentId}`);
+        if (!input.prompt || input.prompt.trim().length === 0) {
+          throw new Error("Prompt is required");
+        }
+        if (agent!.status === "paused") throw new Error("Cannot invoke paused agent");
+        if (agent!.status === "terminated") throw new Error("Cannot invoke terminated agent");
+        if (agent!.status === "pending_approval") {
+          throw new Error("Cannot invoke pending approval agent");
+        }
+        return { runId: `run_${agentId}` };
+      },
       async pause(agentId, companyId) {
         requireCapability(manifest, capabilitySet, "agents.pause");
         const cid = requireCompanyId(companyId);

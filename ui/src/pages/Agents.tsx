@@ -14,11 +14,12 @@ import { EntityRow } from "../components/EntityRow";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { relativeTime, cn, agentRouteRef, agentUrl } from "../lib/utils";
+import { executionSourceLabels, inferAgentExecutionSource } from "../lib/execution-policy";
 import { PageTabBar } from "../components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Bot, Plus, List, GitBranch, SlidersHorizontal } from "lucide-react";
-import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
+import { AGENT_ROLE_LABELS, type Agent, type Company } from "@paperclipai/shared";
 
 const adapterLabels: Record<string, string> = {
   claude_local: "Claude",
@@ -58,7 +59,7 @@ function filterOrgTree(nodes: OrgNode[], tab: FilterTab, showTerminated: boolean
 }
 
 export function Agents() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, selectedCompany } = useCompany();
   const { openNewAgent } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
@@ -256,9 +257,16 @@ export function Agents() {
                           liveCount={liveRunByAgent.get(agent.id)!.liveCount}
                         />
                       )}
-                      <span className="text-xs text-muted-foreground font-mono w-14 text-right">
-                        {adapterLabels[agent.adapterType] ?? agent.adapterType}
-                      </span>
+                      <div className="flex flex-col items-end">
+                        <span className="text-xs text-muted-foreground font-mono w-14 text-right">
+                          {adapterLabels[agent.adapterType] ?? agent.adapterType}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {executionSourceLabels[
+                            inferAgentExecutionSource(agent, selectedCompany?.executionPolicy)
+                          ]}
+                        </span>
+                      </div>
                       <span className="text-xs text-muted-foreground w-16 text-right">
                         {agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "—"}
                       </span>
@@ -284,7 +292,14 @@ export function Agents() {
       {effectiveView === "org" && filteredOrg.length > 0 && (
         <div className="border border-border py-1">
           {filteredOrg.map((node) => (
-            <OrgTreeNode key={node.id} node={node} depth={0} agentMap={agentMap} liveRunByAgent={liveRunByAgent} />
+            <OrgTreeNode
+              key={node.id}
+              node={node}
+              depth={0}
+              agentMap={agentMap}
+              liveRunByAgent={liveRunByAgent}
+              companyExecutionPolicy={selectedCompany?.executionPolicy ?? null}
+            />
           ))}
         </div>
       )}
@@ -309,11 +324,13 @@ function OrgTreeNode({
   depth,
   agentMap,
   liveRunByAgent,
+  companyExecutionPolicy,
 }: {
   node: OrgNode;
   depth: number;
   agentMap: Map<string, Agent>;
   liveRunByAgent: Map<string, { runId: string; liveCount: number }>;
+  companyExecutionPolicy: Company["executionPolicy"];
 }) {
   const agent = agentMap.get(node.id);
 
@@ -357,9 +374,16 @@ function OrgTreeNode({
             )}
             {agent && (
               <>
-                <span className="text-xs text-muted-foreground font-mono w-14 text-right">
-                  {adapterLabels[agent.adapterType] ?? agent.adapterType}
-                </span>
+                <div className="flex flex-col items-end">
+                  <span className="text-xs text-muted-foreground font-mono w-14 text-right">
+                    {adapterLabels[agent.adapterType] ?? agent.adapterType}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {executionSourceLabels[
+                      inferAgentExecutionSource(agent, companyExecutionPolicy)
+                    ]}
+                  </span>
+                </div>
                 <span className="text-xs text-muted-foreground w-16 text-right">
                   {agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "—"}
                 </span>
@@ -374,7 +398,14 @@ function OrgTreeNode({
       {node.reports && node.reports.length > 0 && (
         <div className="border-l border-border/50 ml-4">
           {node.reports.map((child) => (
-            <OrgTreeNode key={child.id} node={child} depth={depth + 1} agentMap={agentMap} liveRunByAgent={liveRunByAgent} />
+            <OrgTreeNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              agentMap={agentMap}
+              liveRunByAgent={liveRunByAgent}
+              companyExecutionPolicy={companyExecutionPolicy}
+            />
           ))}
         </div>
       )}

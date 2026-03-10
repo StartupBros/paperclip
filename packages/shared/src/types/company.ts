@@ -1,4 +1,5 @@
 import type { CompanyStatus } from "../constants.js";
+import type { CompanyExecutionPolicy } from "./execution-policy.js";
 
 export interface Company {
   id: string;
@@ -12,6 +13,7 @@ export interface Company {
   requireBoardApprovalForNewAgents: boolean;
   requireHumanApprovalForAllActions: boolean;
   brandColor: string | null;
+  executionPolicy: CompanyExecutionPolicy | null;
   createdAt: Date;
   updatedAt: Date;
 }

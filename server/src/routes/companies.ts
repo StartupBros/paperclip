@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import {
+  companyExecutionPolicySchema,
   companyPortabilityExportSchema,
   companyPortabilityImportSchema,
   companyPortabilityPreviewSchema,
@@ -9,14 +10,23 @@ import {
 } from "@paperclipai/shared";
 import { forbidden } from "../errors.js";
 import { validate } from "../middleware/validate.js";
-import { accessService, companyPortabilityService, companyService, logActivity } from "../services/index.js";
+import {
+  accessService,
+  companyPortabilityService,
+  companyService,
+  logActivity,
+  parseCompanyExecutionPolicy,
+  secretService,
+} from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { sanitizeRecord } from "../redaction.js";
 
 export function companyRoutes(db: Db) {
   const router = Router();
   const svc = companyService(db);
   const portability = companyPortabilityService(db);
   const access = accessService(db);
+  const secretsSvc = secretService(db);
 
   router.get("/", async (req, res) => {
     assertBoard(req);
@@ -125,15 +135,45 @@ export function companyRoutes(db: Db) {
     res.status(201).json(company);
   });
 
-  router.patch("/:companyId", validate(updateCompanySchema), async (req, res) => {
+  router.patch("/:companyId", validate(updateCompanySchema, { status: 422 }), async (req, res) => {
     assertBoard(req);
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const company = await svc.update(companyId, req.body);
-    if (!company) {
+    const existing = await svc.getById(companyId);
+    if (!existing) {
       res.status(404).json({ error: "Company not found" });
       return;
     }
+    const patch = { ...req.body };
+    if (Object.prototype.hasOwnProperty.call(patch, "executionPolicy")) {
+      const parsedPolicy = patch.executionPolicy == null
+        ? null
+        : companyExecutionPolicySchema.parse(patch.executionPolicy);
+      if (parsedPolicy) {
+        patch.executionPolicy = {
+          mode: parsedPolicy.mode,
+          target: parsedPolicy.target
+            ? {
+                adapterType: parsedPolicy.target.adapterType,
+                adapterConfig: await secretsSvc.normalizeAdapterConfigForPersistence(
+                  companyId,
+                  parsedPolicy.target.adapterConfig ?? {},
+                ),
+              }
+            : null,
+          fallbackChain: await Promise.all(parsedPolicy.fallbackChain.map(async (target) => ({
+            adapterType: target.adapterType,
+            adapterConfig: await secretsSvc.normalizeAdapterConfigForPersistence(
+              companyId,
+              target.adapterConfig ?? {},
+            ),
+          }))),
+        };
+        parseCompanyExecutionPolicy(patch.executionPolicy);
+      }
+    }
+
+    const company = await svc.update(companyId, patch);
     await logActivity(db, {
       companyId,
       actorType: "user",
@@ -141,8 +181,35 @@ export function companyRoutes(db: Db) {
       action: "company.updated",
       entityType: "company",
       entityId: companyId,
-      details: req.body,
+      details: sanitizeRecord(patch),
     });
+    if (Object.prototype.hasOwnProperty.call(patch, "executionPolicy")) {
+      await logActivity(db, {
+        companyId,
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
+        action: "company.execution_policy_updated",
+        entityType: "company",
+        entityId: companyId,
+        details: sanitizeRecord({
+          beforeExecutionPolicy: existing.executionPolicy ?? null,
+          afterExecutionPolicy: company?.executionPolicy ?? null,
+        }),
+      });
+      const previousMode = existing.executionPolicy?.mode ?? null;
+      const nextMode = company?.executionPolicy?.mode ?? null;
+      if (previousMode !== nextMode) {
+        await logActivity(db, {
+          companyId,
+          actorType: "user",
+          actorId: req.actor.userId ?? "board",
+          action: "company.execution_mode_changed",
+          entityType: "company",
+          entityId: companyId,
+          details: { beforeMode: previousMode, afterMode: nextMode },
+        });
+      }
+    }
     res.json(company);
   });
 

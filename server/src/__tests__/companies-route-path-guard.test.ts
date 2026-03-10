@@ -22,6 +22,9 @@ vi.mock("../services/index.js", () => ({
     canUser: vi.fn(),
     ensureMembership: vi.fn(),
   }),
+  secretService: () => ({
+    normalizeConfigSecrets: vi.fn(async (_companyId: string, value: unknown) => value),
+  }),
   logActivity: vi.fn(),
 }));
 

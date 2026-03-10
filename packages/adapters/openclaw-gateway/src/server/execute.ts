@@ -860,6 +860,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       timedOut: false,
       errorMessage: "OpenClaw gateway adapter missing url",
       errorCode: "openclaw_gateway_url_missing",
+      failureCategory: "config",
     };
   }
 
@@ -871,6 +872,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       timedOut: false,
       errorMessage: `Invalid gateway URL: ${urlValue}`,
       errorCode: "openclaw_gateway_url_invalid",
+      failureCategory: "config",
     };
   }
 
@@ -881,6 +883,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       timedOut: false,
       errorMessage: `Unsupported gateway URL protocol: ${parsedUrl.protocol}`,
       errorCode: "openclaw_gateway_url_protocol",
+      failureCategory: "config",
     };
   }
 
@@ -1146,6 +1149,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           timedOut: false,
           errorMessage,
           errorCode: "openclaw_gateway_agent_error",
+          failureCategory: classifyFailureCategory(errorMessage),
           resultJson: acceptedPayload,
         };
       }
@@ -1167,20 +1171,23 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
             timedOut: true,
             errorMessage: `OpenClaw gateway run timed out after ${waitTimeoutMs}ms`,
             errorCode: "openclaw_gateway_wait_timeout",
+            failureCategory: "timeout",
             resultJson: waitPayload,
           };
         }
 
         if (waitStatus === "error") {
+          const errorMessage =
+            nonEmpty(waitPayload?.error) ??
+            lifecycleError ??
+            "OpenClaw gateway run failed";
           return {
             exitCode: 1,
             signal: null,
             timedOut: false,
-            errorMessage:
-              nonEmpty(waitPayload?.error) ??
-              lifecycleError ??
-              "OpenClaw gateway run failed",
+            errorMessage,
             errorCode: "openclaw_gateway_wait_error",
+            failureCategory: classifyFailureCategory(errorMessage),
             resultJson: waitPayload,
           };
         }
@@ -1192,6 +1199,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
             timedOut: false,
             errorMessage: `Unexpected OpenClaw gateway agent.wait status: ${waitStatus}`,
             errorCode: "openclaw_gateway_wait_status_unexpected",
+            failureCategory: "provider",
             resultJson: waitPayload,
           };
         }
@@ -1286,10 +1294,38 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           : pairingRequired
             ? "openclaw_gateway_pairing_required"
             : "openclaw_gateway_request_failed",
+        failureCategory: timedOut
+          ? "timeout"
+          : pairingRequired
+            ? "auth"
+            : classifyFailureCategory(detailedMessage),
         resultJson: asRecord(latestResultPayload),
       };
     } finally {
       client.close();
     }
   }
+}
+
+function classifyFailureCategory(
+  message: string | null | undefined,
+): "rate_limit" | "auth" | "provider" {
+  const lower = (message ?? "").toLowerCase();
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("too many requests") ||
+    lower.includes("quota") ||
+    lower.includes("429")
+  ) {
+    return "rate_limit";
+  }
+  if (
+    lower.includes("unauthorized") ||
+    lower.includes("forbidden") ||
+    lower.includes("auth") ||
+    lower.includes("pairing required")
+  ) {
+    return "auth";
+  }
+  return "provider";
 }

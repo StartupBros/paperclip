@@ -1,5 +1,11 @@
 export type { Company } from "./company.js";
 export type {
+  ExecutionTarget,
+  CompanyExecutionPolicy,
+  HeartbeatResolvedExecutionSource,
+  HeartbeatFailureCategory,
+} from "./execution-policy.js";
+export type {
   Agent,
   AgentPermissions,
   AgentKeyCreated,

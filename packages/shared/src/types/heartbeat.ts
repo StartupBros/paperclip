@@ -4,6 +4,11 @@ import type {
   WakeupTriggerDetail,
   WakeupRequestStatus,
 } from "../constants.js";
+import type {
+  ExecutionTarget,
+  HeartbeatFailureCategory,
+  HeartbeatResolvedExecutionSource,
+} from "./execution-policy.js";
 
 export interface HeartbeatRun {
   id: string;
@@ -30,7 +35,12 @@ export interface HeartbeatRun {
   stdoutExcerpt: string | null;
   stderrExcerpt: string | null;
   errorCode: string | null;
+  failureCategory: HeartbeatFailureCategory | null;
   externalRunId: string | null;
+  retryOfRunId: string | null;
+  retryOrdinal: number;
+  resolvedExecutionTarget: ExecutionTarget | null;
+  resolvedExecutionSource: HeartbeatResolvedExecutionSource | null;
   contextSnapshot: Record<string, unknown> | null;
   createdAt: Date;
   updatedAt: Date;

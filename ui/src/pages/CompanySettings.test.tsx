@@ -19,6 +19,7 @@ const currentCompanyState = {
       brandColor: null,
       status: "active",
       requireBoardApprovalForNewAgents: false,
+      executionPolicy: null,
     },
     {
       id: "comp-2",
@@ -27,6 +28,7 @@ const currentCompanyState = {
       brandColor: null,
       status: "active",
       requireBoardApprovalForNewAgents: false,
+      executionPolicy: null,
     },
   ],
   selectedCompanyId: "comp-1",
@@ -37,6 +39,7 @@ const currentCompanyState = {
     brandColor: null,
     status: "active",
     requireBoardApprovalForNewAgents: false,
+    executionPolicy: null,
   },
   setSelectedCompanyId: vi.fn(),
 };
@@ -72,6 +75,10 @@ vi.mock("@/api/plugins", () => ({
 
 vi.mock("../components/CompanyPatternIcon", () => ({
   CompanyPatternIcon: () => <div data-testid="company-pattern-icon" />,
+}));
+
+vi.mock("../components/CompanyExecutionPolicyCard", () => ({
+  CompanyExecutionPolicyCard: () => <div data-testid="company-execution-policy-card" />,
 }));
 
 vi.mock("../components/agent-config-primitives", () => ({

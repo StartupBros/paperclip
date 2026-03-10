@@ -1,5 +1,6 @@
 export {
   COMPANY_STATUSES,
+  COMPANY_EXECUTION_MODES,
   DEPLOYMENT_MODES,
   DEPLOYMENT_EXPOSURES,
   AUTH_BASE_URL_MODES,
@@ -59,6 +60,7 @@ export {
   PLUGIN_EVENT_TYPES,
   PLUGIN_BRIDGE_ERROR_CODES,
   type CompanyStatus,
+  type CompanyExecutionMode,
   type DeploymentMode,
   type DeploymentExposure,
   type AuthBaseUrlMode,
@@ -108,6 +110,10 @@ export {
 
 export type {
   Company,
+  CompanyExecutionPolicy,
+  ExecutionTarget,
+  HeartbeatResolvedExecutionSource,
+  HeartbeatFailureCategory,
   Agent,
   AgentPermissions,
   AgentKeyCreated,
@@ -194,6 +200,8 @@ export type {
 export {
   createCompanySchema,
   updateCompanySchema,
+  executionTargetSchema,
+  companyExecutionPolicySchema,
   type CreateCompany,
   type UpdateCompany,
   createAgentSchema,

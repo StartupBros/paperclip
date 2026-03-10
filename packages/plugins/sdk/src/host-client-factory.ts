@@ -169,10 +169,11 @@ export interface HostServices {
     createComment(params: WorkerToHostMethods["issues.createComment"][0]): Promise<WorkerToHostMethods["issues.createComment"][1]>;
   };
 
-  /** Provides `agents.list`, `agents.get`, `agents.pause`, `agents.resume`. */
+  /** Provides `agents.list`, `agents.get`, `agents.invoke`, `agents.pause`, `agents.resume`. */
   agents: {
     list(params: WorkerToHostMethods["agents.list"][0]): Promise<WorkerToHostMethods["agents.list"][1]>;
     get(params: WorkerToHostMethods["agents.get"][0]): Promise<WorkerToHostMethods["agents.get"][1]>;
+    invoke(params: WorkerToHostMethods["agents.invoke"][0]): Promise<WorkerToHostMethods["agents.invoke"][1]>;
     pause(params: WorkerToHostMethods["agents.pause"][0]): Promise<WorkerToHostMethods["agents.pause"][1]>;
     resume(params: WorkerToHostMethods["agents.resume"][0]): Promise<WorkerToHostMethods["agents.resume"][1]>;
   };
@@ -296,6 +297,7 @@ const METHOD_CAPABILITY_MAP: Record<WorkerToHostMethodName, PluginCapability | n
   // Agents
   "agents.list": "agents.read",
   "agents.get": "agents.read",
+  "agents.invoke": "agents.invoke",
   "agents.pause": "agents.pause",
   "agents.resume": "agents.resume",
 
@@ -477,6 +479,9 @@ export function createHostClientHandlers(
     }),
     "agents.get": gated("agents.get", async (params) => {
       return services.agents.get(params);
+    }),
+    "agents.invoke": gated("agents.invoke", async (params) => {
+      return services.agents.invoke(params);
     }),
     "agents.pause": gated("agents.pause", async (params) => {
       return services.agents.pause(params);

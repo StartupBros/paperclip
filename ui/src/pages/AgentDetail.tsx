@@ -27,6 +27,11 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { ScrollToBottom } from "../components/ScrollToBottom";
 import { formatCents, formatDate, relativeTime, formatTokens } from "../lib/utils";
 import { cn } from "../lib/utils";
+import {
+  executionSourceLabels,
+  failureCategoryLabels,
+  inferAgentExecutionSource,
+} from "../lib/execution-policy";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -64,7 +69,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AgentIcon, AgentIconPicker } from "../components/AgentIconPicker";
-import { isUuidLike, type Agent, type HeartbeatRun, type HeartbeatRunEvent, type AgentRuntimeState, type LiveEvent } from "@paperclipai/shared";
+import { isUuidLike, type Agent, type AgentRuntimeState, type CompanyExecutionPolicy, type HeartbeatRun, type HeartbeatRunEvent, type LiveEvent } from "@paperclipai/shared";
 import { agentRouteRef } from "../lib/utils";
 import { usePluginSlots, PluginSlotMount } from "@/plugins/slots";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
@@ -245,7 +250,7 @@ export function AgentDetail() {
   }>();
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
-  const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
+  const { companies, selectedCompany, selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { closePanel } = usePanel();
   const { openNewIssue } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -749,6 +754,7 @@ export function AgentDetail() {
           directReports={directReports}
           agentId={agent.id}
           agentRouteId={canonicalAgentRef}
+          companyExecutionPolicy={selectedCompany?.executionPolicy ?? null}
           trustProgress={trustProgress ?? null}
         />
       )}
@@ -882,6 +888,7 @@ function AgentOverview({
   directReports,
   agentId,
   agentRouteId,
+  companyExecutionPolicy,
   trustProgress,
 }: {
   agent: Agent;
@@ -892,6 +899,7 @@ function AgentOverview({
   directReports: Agent[];
   agentId: string;
   agentRouteId: string;
+  companyExecutionPolicy: CompanyExecutionPolicy | null;
   trustProgress: TrustProgress | null;
 }) {
   return (
@@ -957,6 +965,7 @@ function AgentOverview({
         agentRouteId={agentRouteId}
         reportsToAgent={reportsToAgent}
         directReports={directReports}
+        companyExecutionPolicy={companyExecutionPolicy}
         trustProgress={trustProgress ?? null}
       />
     </div>
@@ -972,16 +981,19 @@ function ConfigSummary({
   agentRouteId,
   reportsToAgent,
   directReports,
+  companyExecutionPolicy,
   trustProgress,
 }: {
   agent: Agent;
   agentRouteId: string;
   reportsToAgent: Agent | null;
   directReports: Agent[];
+  companyExecutionPolicy: CompanyExecutionPolicy | null;
   trustProgress: TrustProgress | null;
 }) {
   const config = agent.adapterConfig as Record<string, unknown>;
   const promptText = typeof config?.promptTemplate === "string" ? config.promptTemplate : "";
+  const executionSource = inferAgentExecutionSource(agent, companyExecutionPolicy);
 
   return (
     <div className="space-y-3">
@@ -1006,6 +1018,9 @@ function ConfigSummary({
                   ({String(config.model)})
                 </span>
               )}
+            </SummaryRow>
+            <SummaryRow label="Resolution">
+              <span>{executionSourceLabels[executionSource]}</span>
             </SummaryRow>
             <SummaryRow label="Heartbeat">
               {(agent.runtimeConfig as Record<string, unknown>)?.heartbeat
@@ -1550,7 +1565,9 @@ function RunDetail({ run, agentRouteId, adapterType }: { run: HeartbeatRun; agen
 
   const canRetryRun = run.status === "failed" || run.status === "timed_out";
   const retryPayload = useMemo(() => {
-    const payload: Record<string, unknown> = {};
+    const payload: Record<string, unknown> = {
+      retryOfRunId: run.id,
+    };
     const context = asRecord(run.contextSnapshot);
     if (!context) return payload;
     const issueId = asNonEmptyString(context.issueId);
@@ -1560,7 +1577,7 @@ function RunDetail({ run, agentRouteId, adapterType }: { run: HeartbeatRun; agen
     if (taskId) payload.taskId = taskId;
     if (taskKey) payload.taskKey = taskKey;
     return payload;
-  }, [run.contextSnapshot]);
+  }, [run.contextSnapshot, run.id]);
   const retryRun = useMutation({
     mutationFn: async () => {
       const result = await agentsApi.wakeup(run.agentId, {
@@ -1637,6 +1654,12 @@ function RunDetail({ run, agentRouteId, adapterType }: { run: HeartbeatRun; agen
   const sessionChanged = run.sessionIdBefore && run.sessionIdAfter && run.sessionIdBefore !== run.sessionIdAfter;
   const sessionId = run.sessionIdAfter || run.sessionIdBefore;
   const hasNonZeroExit = run.exitCode !== null && run.exitCode !== 0;
+  const hasRunExecutionMetadata =
+    Boolean(run.resolvedExecutionTarget) ||
+    Boolean(run.resolvedExecutionSource) ||
+    Boolean(run.failureCategory) ||
+    Boolean(run.retryOfRunId) ||
+    (run.retryOrdinal ?? 0) > 0;
 
   return (
     <div className="space-y-4 min-w-0">
@@ -1768,6 +1791,32 @@ function RunDetail({ run, agentRouteId, adapterType }: { run: HeartbeatRun; agen
               <div className="text-xs text-red-600 dark:text-red-400">
                 Exit code {run.exitCode}
                 {run.signal && <span className="text-muted-foreground ml-1">(signal: {run.signal})</span>}
+              </div>
+            )}
+            {hasRunExecutionMetadata && (
+              <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                {run.resolvedExecutionSource && (
+                  <div>
+                    Resolution: {executionSourceLabels[run.resolvedExecutionSource]}
+                  </div>
+                )}
+                {run.resolvedExecutionTarget?.adapterType && (
+                  <div>
+                    Adapter: {run.resolvedExecutionTarget.adapterType}
+                    {typeof run.resolvedExecutionTarget.adapterConfig?.model === "string" &&
+                    run.resolvedExecutionTarget.adapterConfig.model.length > 0
+                      ? ` (${run.resolvedExecutionTarget.adapterConfig.model})`
+                      : ""}
+                  </div>
+                )}
+                {run.failureCategory && (
+                  <div>Failure category: {failureCategoryLabels[run.failureCategory]}</div>
+                )}
+                {run.retryOfRunId && (
+                  <div>
+                    Retry lineage: #{run.retryOrdinal} of {run.retryOfRunId.slice(0, 8)}
+                  </div>
+                )}
               </div>
             )}
           </div>

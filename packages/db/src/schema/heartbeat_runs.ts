@@ -1,4 +1,9 @@
-import { pgTable, uuid, text, timestamp, jsonb, index, integer, bigint, boolean } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, index, integer, bigint, boolean, type AnyPgColumn } from "drizzle-orm/pg-core";
+import type {
+  ExecutionTarget,
+  HeartbeatFailureCategory,
+  HeartbeatResolvedExecutionSource,
+} from "@paperclipai/shared";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { agentWakeupRequests } from "./agent_wakeup_requests.js";
@@ -30,7 +35,12 @@ export const heartbeatRuns = pgTable(
     stdoutExcerpt: text("stdout_excerpt"),
     stderrExcerpt: text("stderr_excerpt"),
     errorCode: text("error_code"),
+    failureCategory: text("failure_category").$type<HeartbeatFailureCategory | null>(),
     externalRunId: text("external_run_id"),
+    retryOfRunId: uuid("retry_of_run_id").references((): AnyPgColumn => heartbeatRuns.id, { onDelete: "set null" }),
+    retryOrdinal: integer("retry_ordinal").notNull().default(0),
+    resolvedExecutionTarget: jsonb("resolved_execution_target").$type<ExecutionTarget | null>(),
+    resolvedExecutionSource: text("resolved_execution_source").$type<HeartbeatResolvedExecutionSource | null>(),
     contextSnapshot: jsonb("context_snapshot").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

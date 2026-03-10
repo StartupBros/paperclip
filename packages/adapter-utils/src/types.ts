@@ -32,6 +32,14 @@ export interface UsageSummary {
 
 export type AdapterBillingType = "api" | "subscription" | "unknown";
 
+export type AdapterFailureCategory =
+  | "rate_limit"
+  | "auth"
+  | "timeout"
+  | "config"
+  | "provider"
+  | "unknown";
+
 export interface AdapterExecutionResult {
   exitCode: number | null;
   signal: string | null;
@@ -50,6 +58,7 @@ export interface AdapterExecutionResult {
   model?: string | null;
   billingType?: AdapterBillingType | null;
   costUsd?: number | null;
+  failureCategory?: AdapterFailureCategory | null;
   resultJson?: Record<string, unknown> | null;
   summary?: string | null;
   clearSession?: boolean;

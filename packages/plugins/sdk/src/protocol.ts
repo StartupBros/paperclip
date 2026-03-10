@@ -604,6 +604,15 @@ export interface WorkerToHostMethods {
   ];
 
   // Agents (write)
+  "agents.invoke": [
+    params: {
+      agentId: string;
+      companyId: string;
+      prompt: string;
+      reason?: string;
+    },
+    result: { runId: string },
+  ];
   "agents.pause": [
     params: { agentId: string; companyId: string },
     result: unknown,

@@ -9,10 +9,32 @@ import {
   runChildProcess,
 } from "../utils.js";
 
+function classifyProcessFailure(message: string): "rate_limit" | "provider" {
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("too many requests") ||
+    lower.includes("quota") ||
+    lower.includes("429")
+  ) {
+    return "rate_limit";
+  }
+  return "provider";
+}
+
 export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
   const { runId, agent, config, onLog, onMeta } = ctx;
   const command = asString(config.command, "");
-  if (!command) throw new Error("Process adapter missing command");
+  if (!command) {
+    return {
+      exitCode: 1,
+      signal: null,
+      timedOut: false,
+      errorMessage: "Process adapter missing command",
+      errorCode: "process_command_missing",
+      failureCategory: "config",
+    };
+  }
 
   const args = asStringArray(config.args);
   const cwd = asString(config.cwd, process.cwd());
@@ -49,15 +71,20 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       signal: proc.signal,
       timedOut: true,
       errorMessage: `Timed out after ${timeoutSec}s`,
+      errorCode: "timeout",
+      failureCategory: "timeout",
     };
   }
 
   if ((proc.exitCode ?? 0) !== 0) {
+    const errorMessage = `Process exited with code ${proc.exitCode ?? -1}`;
     return {
       exitCode: proc.exitCode,
       signal: proc.signal,
       timedOut: false,
-      errorMessage: `Process exited with code ${proc.exitCode ?? -1}`,
+      errorMessage,
+      errorCode: "process_exit_nonzero",
+      failureCategory: classifyProcessFailure(`${errorMessage}\n${proc.stderr}`),
       resultJson: {
         stdout: proc.stdout,
         stderr: proc.stderr,

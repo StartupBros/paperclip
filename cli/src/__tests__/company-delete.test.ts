@@ -15,6 +15,7 @@ function makeCompany(overrides: Partial<Company>): Company {
     requireBoardApprovalForNewAgents: false,
     requireHumanApprovalForAllActions: true,
     brandColor: null,
+    executionPolicy: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

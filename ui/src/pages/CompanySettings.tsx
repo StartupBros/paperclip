@@ -9,6 +9,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Settings, Check, Puzzle } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
+import { CompanyExecutionPolicyCard } from "../components/CompanyExecutionPolicyCard";
 import {
   Field,
   ToggleField,
@@ -330,6 +331,14 @@ export function CompanySettings() {
           )}
         </div>
       )}
+
+      {/* Execution */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Execution
+        </div>
+        <CompanyExecutionPolicyCard company={selectedCompany} />
+      </div>
 
       {/* Hiring */}
       <div className="space-y-4">

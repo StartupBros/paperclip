@@ -434,6 +434,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         signal: attempt.proc.signal,
         timedOut: true,
         errorMessage: `Timed out after ${timeoutSec}s`,
+        errorCode: "timeout",
+        failureCategory: "timeout",
         clearSession: clearSessionOnMissingSession,
       };
     }
@@ -463,6 +465,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         (attempt.proc.exitCode ?? 0) === 0
           ? null
           : fallbackErrorMessage,
+      failureCategory:
+        (attempt.proc.exitCode ?? 0) === 0
+          ? null
+          : classifyFailureCategory(fallbackErrorMessage),
       usage: attempt.parsed.usage,
       sessionId: resolvedSessionId,
       sessionParams: resolvedSessionParams,
@@ -496,4 +502,19 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   }
 
   return toResult(initial);
+}
+
+function classifyFailureCategory(
+  message: string | null | undefined,
+): "rate_limit" | "provider" {
+  const lower = (message ?? "").toLowerCase();
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("too many requests") ||
+    lower.includes("quota") ||
+    lower.includes("429")
+  ) {
+    return "rate_limit";
+  }
+  return "provider";
 }

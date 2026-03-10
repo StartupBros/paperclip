@@ -27,10 +27,16 @@ describe("trust constants", () => {
 describe("trust evaluation logic", () => {
   // Simulates countConsecutiveSuccesses: scan backward, stop at first non-success
   function countConsecutiveSuccesses(
-    runs: Array<{ status: string }>,
+    runs: Array<{ status: string; errorCode?: string | null; failureCategory?: string | null }>,
   ): number {
     let count = 0;
     for (const run of runs) {
+      if (
+        run.status === "failed" &&
+        (run.errorCode === "process_lost" || run.failureCategory === "rate_limit")
+      ) {
+        continue;
+      }
       if (run.status !== "succeeded") break;
       count++;
     }
@@ -39,10 +45,13 @@ describe("trust evaluation logic", () => {
 
   // Simulates countRecentFailures: count failures (excluding process_lost) in window
   function countRecentFailures(
-    runs: Array<{ status: string; errorCode: string | null }>,
+    runs: Array<{ status: string; errorCode: string | null; failureCategory?: string | null }>,
   ): number {
     return runs.filter(
-      (r) => r.status === "failed" && r.errorCode !== "process_lost",
+      (r) =>
+        r.status === "failed" &&
+        r.errorCode !== "process_lost" &&
+        r.failureCategory !== "rate_limit",
     ).length;
   }
 
@@ -103,6 +112,15 @@ describe("trust evaluation logic", () => {
     it("returns 0 for empty run history", () => {
       expect(countConsecutiveSuccesses([])).toBe(0);
     });
+
+    it("ignores rate_limit failures when counting promotion streaks", () => {
+      const runs = [
+        { status: "succeeded" },
+        { status: "failed", failureCategory: "rate_limit" },
+        { status: "succeeded" },
+      ];
+      expect(countConsecutiveSuccesses(runs)).toBe(2);
+    });
   });
 
   describe("countRecentFailures", () => {
@@ -121,6 +139,15 @@ describe("trust evaluation logic", () => {
         { status: "failed", errorCode: "process_lost" },
         { status: "failed", errorCode: null },
         { status: "failed", errorCode: "process_lost" },
+        { status: "succeeded", errorCode: null },
+      ];
+      expect(countRecentFailures(runs)).toBe(1);
+    });
+
+    it("excludes rate_limit failures", () => {
+      const runs = [
+        { status: "failed", errorCode: null, failureCategory: "rate_limit" },
+        { status: "failed", errorCode: null, failureCategory: "provider" },
         { status: "succeeded", errorCode: null },
       ];
       expect(countRecentFailures(runs)).toBe(1);
