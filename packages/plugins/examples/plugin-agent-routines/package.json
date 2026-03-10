@@ -1,7 +1,7 @@
 {
   "name": "@paperclipai/plugin-agent-routines",
-  "version": "0.1.0",
-  "description": "Run agents on cron schedules with specific prompts",
+  "version": "0.2.0",
+  "description": "Run agents on cron schedules with prompts, timezones, jitter, and persistent routine state",
   "type": "module",
   "private": true,
   "exports": {
