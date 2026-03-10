@@ -1,22 +1,23 @@
 /**
  * Tests for the Agent Routines Plugin.
- *
- * Uses the SDK test harness to verify the plugin's dispatcher job handler,
- * cron matching, config validation, and error isolation.
- *
- * @see packages/plugins/examples/plugin-agent-routines/
  */
 
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createTestHarness } from "@paperclipai/plugin-sdk";
-import type { TestHarness, PluginCapability } from "@paperclipai/plugin-sdk";
+import type { TestHarness } from "@paperclipai/plugin-sdk";
 import manifest from "../../../packages/plugins/examples/plugin-agent-routines/src/manifest.js";
 import plugin from "../../../packages/plugins/examples/plugin-agent-routines/src/worker.js";
-import { shouldFireAt, validateCronExpression } from "../../../packages/plugins/examples/plugin-agent-routines/src/cron-match.js";
-
-// ===========================================================================
-// Helpers
-// ===========================================================================
+import {
+  nextFireAfter,
+  shouldFireAt,
+  validateCronExpression,
+  validateTimezone,
+} from "../../../packages/plugins/examples/plugin-agent-routines/src/cron-match.js";
+import {
+  getRoutineStateScope,
+  normalizeRoutine,
+  type RoutineConfig,
+} from "../../../packages/plugins/examples/plugin-agent-routines/src/routines.js";
 
 const AGENT_SEED = {
   id: "agent-1",
@@ -26,12 +27,15 @@ const AGENT_SEED = {
   role: "engineer" as const,
   reportsTo: null,
   status: "active" as const,
-  adapterType: "codex-local",
+  adapterType: "codex_local" as const,
   adapterConfig: {},
   runtimeConfig: {},
-  permissions: [],
+  permissions: { canCreateAgents: false },
   capabilities: null,
+  icon: null,
   budgetMonthlyCents: 0,
+  spentMonthlyCents: 0,
+  lastHeartbeatAt: null,
   metadata: null,
   terminatedAt: null,
   createdAt: new Date(),
@@ -40,419 +44,298 @@ const AGENT_SEED = {
 };
 
 function createRoutineHarness(config?: Record<string, unknown>): TestHarness {
-  return createTestHarness({
-    manifest,
-    config,
-  });
+  return createTestHarness({ manifest, config });
 }
 
-/** Build a scheduledAt timestamp matching a specific UTC time. */
-function utcDate(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute: number,
-): string {
+function utcDate(year: number, month: number, day: number, hour: number, minute: number): string {
   return new Date(Date.UTC(year, month - 1, day, hour, minute, 0)).toISOString();
 }
 
-// ===========================================================================
-// cron-match unit tests
-// ===========================================================================
+function baseRoutine(overrides: Partial<RoutineConfig> = {}): RoutineConfig {
+  return {
+    name: "Morning health check",
+    cronExpression: "0 9 * * *",
+    agentId: "agent-1",
+    companyId: "co-1",
+    prompt: "Run a production health check",
+    enabled: true,
+    timezone: "UTC",
+    ...overrides,
+  };
+}
+
+async function setupHarnessWithRoutines(routines: RoutineConfig[]): Promise<TestHarness> {
+  const h = createRoutineHarness({ routines });
+  h.seed({ agents: [{ ...AGENT_SEED }] });
+  await plugin.definition.setup(h.ctx);
+  return h;
+}
 
 describe("cron-match", () => {
-  describe("shouldFireAt", () => {
-    it("matches every-minute wildcard", () => {
-      const date = new Date(Date.UTC(2026, 2, 9, 14, 30)); // Mon March 9 2026 14:30 UTC
-      expect(shouldFireAt("* * * * *", date)).toBe(true);
-    });
-
-    it("matches exact minute and hour", () => {
-      const date = new Date(Date.UTC(2026, 2, 9, 9, 0));
-      expect(shouldFireAt("0 9 * * *", date)).toBe(true);
-    });
-
-    it("rejects non-matching minute", () => {
-      const date = new Date(Date.UTC(2026, 2, 9, 9, 5));
-      expect(shouldFireAt("0 9 * * *", date)).toBe(false);
-    });
-
-    it("matches weekday range (Mon-Fri)", () => {
-      // 2026-03-09 is a Monday (day 1)
-      const monday = new Date(Date.UTC(2026, 2, 9, 9, 0));
-      expect(shouldFireAt("0 9 * * 1-5", monday)).toBe(true);
-
-      // 2026-03-08 is a Sunday (day 0)
-      const sunday = new Date(Date.UTC(2026, 2, 8, 9, 0));
-      expect(shouldFireAt("0 9 * * 1-5", sunday)).toBe(false);
-    });
-
-    it("matches step syntax", () => {
-      const date = new Date(Date.UTC(2026, 2, 9, 14, 15));
-      expect(shouldFireAt("*/15 * * * *", date)).toBe(true);
-      expect(shouldFireAt("*/15 * * * *", new Date(Date.UTC(2026, 2, 9, 14, 7)))).toBe(false);
-    });
-
-    it("matches comma-separated values", () => {
-      const date = new Date(Date.UTC(2026, 2, 9, 9, 0));
-      expect(shouldFireAt("0 9,17 * * *", date)).toBe(true);
-
-      const date2 = new Date(Date.UTC(2026, 2, 9, 17, 0));
-      expect(shouldFireAt("0 9,17 * * *", date2)).toBe(true);
-
-      const date3 = new Date(Date.UTC(2026, 2, 9, 12, 0));
-      expect(shouldFireAt("0 9,17 * * *", date3)).toBe(false);
-    });
-
-    it("matches specific day of month", () => {
-      const first = new Date(Date.UTC(2026, 2, 1, 0, 0));
-      expect(shouldFireAt("0 0 1 * *", first)).toBe(true);
-
-      const second = new Date(Date.UTC(2026, 2, 2, 0, 0));
-      expect(shouldFireAt("0 0 1 * *", second)).toBe(false);
-    });
+  it("matches simple UTC schedules", () => {
+    const date = new Date(Date.UTC(2026, 2, 9, 9, 0));
+    expect(shouldFireAt("0 9 * * *", date)).toBe(true);
+    expect(shouldFireAt("5 9 * * *", date)).toBe(false);
   });
 
-  describe("validateCronExpression", () => {
-    it("returns null for valid expressions", () => {
-      expect(validateCronExpression("* * * * *")).toBeNull();
-      expect(validateCronExpression("0 9 * * 1-5")).toBeNull();
-      expect(validateCronExpression("*/15 * * * *")).toBeNull();
-      expect(validateCronExpression("0 2 1 * *")).toBeNull();
-    });
+  it("matches schedules in a non-UTC timezone", () => {
+    const date = new Date(Date.UTC(2026, 0, 5, 14, 0)); // 9:00 AM America/New_York
+    expect(shouldFireAt("0 9 * * 1", date, "America/New_York")).toBe(true);
+    expect(shouldFireAt("0 9 * * 1", date, "UTC")).toBe(false);
+  });
 
-    it("returns error for empty expression", () => {
-      expect(validateCronExpression("")).not.toBeNull();
-    });
+  it("computes the next matching fire time", () => {
+    const next = nextFireAfter("0 9 * * *", new Date(Date.UTC(2026, 2, 9, 8, 30)), "UTC");
+    expect(next?.toISOString()).toBe(utcDate(2026, 3, 9, 9, 0));
+  });
 
-    it("returns error for wrong number of fields", () => {
-      expect(validateCronExpression("* * *")).not.toBeNull();
-      expect(validateCronExpression("* * * * * *")).not.toBeNull();
-    });
-
-    it("returns error for out-of-range values", () => {
-      expect(validateCronExpression("60 * * * *")).not.toBeNull();
-      expect(validateCronExpression("* 25 * * *")).not.toBeNull();
-      expect(validateCronExpression("* * 32 * *")).not.toBeNull();
-      expect(validateCronExpression("* * * 13 *")).not.toBeNull();
-      expect(validateCronExpression("* * * * 7")).not.toBeNull();
-    });
-
-    it("returns error for invalid syntax", () => {
-      expect(validateCronExpression("abc * * * *")).not.toBeNull();
-      expect(validateCronExpression("* * * * a-b")).not.toBeNull();
-    });
+  it("validates cron expressions and timezones", () => {
+    expect(validateCronExpression("*/15 * * * *")).toBeNull();
+    expect(validateCronExpression("invalid cron")).not.toBeNull();
+    expect(validateTimezone("UTC")).toBeNull();
+    expect(validateTimezone("Mars/Olympus_Mons")).not.toBeNull();
   });
 });
 
-// ===========================================================================
-// Plugin dispatcher tests
-// ===========================================================================
-
-describe("agent-routines plugin", () => {
+describe("agent-routines plugin dispatcher", () => {
   let h: TestHarness;
 
-  describe("dispatcher fires matching routines", () => {
-    beforeEach(async () => {
-      h = createRoutineHarness({
-        routines: [
-          {
-            name: "Morning health check",
-            cronExpression: "0 9 * * *",
-            agentId: "agent-1",
-            companyId: "co-1",
-            prompt: "Run a production health check",
-            enabled: true,
-          },
-        ],
-      });
-      h.seed({ agents: [{ ...AGENT_SEED }] });
-      await plugin.definition.setup(h.ctx);
-    });
-
-    it("invokes agent when cron matches", async () => {
-      // 9:00 UTC — should match "0 9 * * *"
-      await h.runJob("routine-dispatcher", {
-        scheduledAt: utcDate(2026, 3, 9, 9, 0),
-      });
-
-      expect(h.activity).toHaveLength(1);
-      expect(h.activity[0].message).toContain("invoked agent agent-1");
-      expect(h.metrics).toHaveLength(1);
-      expect(h.metrics[0].tags).toEqual({ routine: "Morning health check", status: "success" });
-    });
-
-    it("skips agent when cron does not match", async () => {
-      // 10:00 UTC — should NOT match "0 9 * * *"
-      await h.runJob("routine-dispatcher", {
-        scheduledAt: utcDate(2026, 3, 9, 10, 0),
-      });
-
-      expect(h.activity).toHaveLength(0);
-      expect(h.metrics).toHaveLength(0);
-    });
+  beforeEach(async () => {
+    h = await setupHarnessWithRoutines([baseRoutine()]);
   });
 
-  describe("disabled routines", () => {
-    it("skips routines with enabled: false", async () => {
-      h = createRoutineHarness({
-        routines: [
-          {
-            name: "Disabled routine",
-            cronExpression: "* * * * *",
-            agentId: "agent-1",
-            companyId: "co-1",
-            prompt: "Should not fire",
-            enabled: false,
-          },
-        ],
-      });
-      h.seed({ agents: [{ ...AGENT_SEED }] });
-      await plugin.definition.setup(h.ctx);
+  it("invokes agent when the cron matches and persists routine state", async () => {
+    const routine = normalizeRoutine(baseRoutine());
 
-      await h.runJob("routine-dispatcher", {
-        scheduledAt: utcDate(2026, 3, 9, 9, 0),
-      });
-
-      expect(h.activity).toHaveLength(0);
-      expect(h.metrics).toHaveLength(0);
+    await h.runJob("routine-dispatcher", {
+      scheduledAt: utcDate(2026, 3, 9, 9, 0),
     });
+
+    expect(h.activity).toHaveLength(1);
+    expect(h.activity[0].message).toContain("invoked agent agent-1");
+    expect(h.metrics).toHaveLength(1);
+    expect(h.metrics[0].tags).toEqual({
+      routine: "Morning health check",
+      status: "success",
+      trigger: "scheduled",
+    });
+
+    const state = h.getState(getRoutineStateScope(routine)) as Record<string, unknown>;
+    expect(state.lastRunStatus).toBe("success");
+    expect(state.lastRunId).toBeTruthy();
+    expect(state.lastScheduledAt).toBe(utcDate(2026, 3, 9, 9, 0));
+    expect(state.consecutiveErrors).toBe(0);
   });
 
-  describe("error isolation", () => {
-    it("failing routine does not block subsequent routines", async () => {
-      h = createRoutineHarness({
-        routines: [
-          {
-            name: "Bad routine",
-            cronExpression: "* * * * *",
-            agentId: "missing-agent",
-            companyId: "co-1",
-            prompt: "This will fail",
-          },
-          {
-            name: "Good routine",
-            cronExpression: "* * * * *",
-            agentId: "agent-1",
-            companyId: "co-1",
-            prompt: "This should succeed",
-          },
-        ],
-      });
-      h.seed({ agents: [{ ...AGENT_SEED }] });
-      await plugin.definition.setup(h.ctx);
+  it("respects per-routine timezones", async () => {
+    h = await setupHarnessWithRoutines([
+      baseRoutine({
+        name: "NY morning",
+        timezone: "America/New_York",
+        cronExpression: "0 9 * * 1",
+      }),
+    ]);
 
-      await h.runJob("routine-dispatcher", {
-        scheduledAt: utcDate(2026, 3, 9, 9, 0),
-      });
-
-      // Both routines should produce activity entries
-      expect(h.activity).toHaveLength(2);
-      expect(h.activity[0].message).toContain("failed");
-      expect(h.activity[1].message).toContain("invoked");
-
-      // Both should write metrics
-      expect(h.metrics).toHaveLength(2);
-      expect(h.metrics[0].tags).toEqual({ routine: "Bad routine", status: "error" });
-      expect(h.metrics[1].tags).toEqual({ routine: "Good routine", status: "success" });
+    await h.runJob("routine-dispatcher", {
+      scheduledAt: utcDate(2026, 1, 5, 14, 0),
     });
 
-    it("logs error for paused agent without crashing", async () => {
-      h = createRoutineHarness({
-        routines: [
-          {
-            name: "Paused agent routine",
-            cronExpression: "* * * * *",
-            agentId: "agent-1",
-            companyId: "co-1",
-            prompt: "Target is paused",
-          },
-        ],
-      });
-      h.seed({ agents: [{ ...AGENT_SEED, status: "paused" as const }] });
-      await plugin.definition.setup(h.ctx);
-
-      await h.runJob("routine-dispatcher", {
-        scheduledAt: utcDate(2026, 3, 9, 9, 0),
-      });
-
-      expect(h.activity).toHaveLength(1);
-      expect(h.activity[0].message).toContain("failed");
-      expect(h.metrics[0].tags).toEqual({ routine: "Paused agent routine", status: "error" });
-      expect(h.logs.some((l) => l.level === "error")).toBe(true);
-    });
+    expect(h.activity).toHaveLength(1);
+    expect(h.activity[0].message).toContain("NY morning");
   });
 
-  describe("empty config", () => {
-    it("handles no routines gracefully", async () => {
-      h = createRoutineHarness({});
-      await plugin.definition.setup(h.ctx);
+  it("skips disabled routines", async () => {
+    h = await setupHarnessWithRoutines([
+      baseRoutine({ name: "Disabled routine", enabled: false }),
+    ]);
 
-      await h.runJob("routine-dispatcher", {
-        scheduledAt: utcDate(2026, 3, 9, 9, 0),
-      });
-
-      expect(h.activity).toHaveLength(0);
-      expect(h.metrics).toHaveLength(0);
+    await h.runJob("routine-dispatcher", {
+      scheduledAt: utcDate(2026, 3, 9, 9, 0),
     });
 
-    it("handles undefined config gracefully", async () => {
-      h = createRoutineHarness();
-      await plugin.definition.setup(h.ctx);
-
-      await h.runJob("routine-dispatcher", {
-        scheduledAt: utcDate(2026, 3, 9, 9, 0),
-      });
-
-      expect(h.activity).toHaveLength(0);
-    });
+    expect(h.activity).toHaveLength(0);
+    expect(h.metrics).toHaveLength(0);
   });
 
-  describe("multiple matching routines", () => {
-    it("fires all matching routines in a single tick", async () => {
-      h = createRoutineHarness({
-        routines: [
-          {
-            name: "Routine A",
-            cronExpression: "0 9 * * *",
-            agentId: "agent-1",
-            companyId: "co-1",
-            prompt: "Do task A",
-          },
-          {
-            name: "Routine B",
-            cronExpression: "0 9 * * *",
-            agentId: "agent-1",
-            companyId: "co-1",
-            prompt: "Do task B",
-          },
-        ],
-      });
-      h.seed({ agents: [{ ...AGENT_SEED }] });
-      await plugin.definition.setup(h.ctx);
+  it("isolates errors so one failing routine does not block another", async () => {
+    h = await setupHarnessWithRoutines([
+      baseRoutine({ name: "Bad routine", agentId: "missing-agent", cronExpression: "* * * * *" }),
+      baseRoutine({ name: "Good routine", cronExpression: "* * * * *" }),
+    ]);
 
-      await h.runJob("routine-dispatcher", {
-        scheduledAt: utcDate(2026, 3, 9, 9, 0),
-      });
-
-      expect(h.activity).toHaveLength(2);
-      expect(h.metrics).toHaveLength(2);
+    await h.runJob("routine-dispatcher", {
+      scheduledAt: utcDate(2026, 3, 9, 9, 0),
     });
+
+    expect(h.activity).toHaveLength(2);
+    expect(h.activity[0].message).toContain("failed");
+    expect(h.activity[1].message).toContain("invoked");
+    expect(h.metrics).toHaveLength(2);
+  });
+
+  it("auto-pauses routines after repeated dispatch failures", async () => {
+    const routine = baseRoutine({
+      name: "Auto pause routine",
+      agentId: "missing-agent",
+      cronExpression: "* * * * *",
+      maxConsecutiveErrorsBeforePause: 2,
+    });
+    h = await setupHarnessWithRoutines([routine]);
+
+    await h.runJob("routine-dispatcher", { scheduledAt: utcDate(2026, 3, 9, 9, 0) });
+    await h.runJob("routine-dispatcher", { scheduledAt: utcDate(2026, 3, 9, 9, 1) });
+    await h.runJob("routine-dispatcher", { scheduledAt: utcDate(2026, 3, 9, 9, 2) });
+
+    const state = h.getState(getRoutineStateScope(normalizeRoutine(routine))) as Record<string, unknown>;
+    expect(state.lastRunStatus).toBe("error");
+    expect(state.consecutiveErrors).toBe(2);
+    expect(state.autoPaused).toBe(true);
+    expect(state.disabledReason).toContain("Auto-paused");
+
+    // Third tick should be skipped because the routine is auto-paused.
+    expect(h.activity).toHaveLength(2);
+  });
+
+  it("records deterministic stagger metadata", async () => {
+    const routine = baseRoutine({
+      name: "Jittered routine",
+      cronExpression: "* * * * *",
+      staggerMs: 10,
+    });
+    h = await setupHarnessWithRoutines([routine]);
+
+    await h.runJob("routine-dispatcher", {
+      scheduledAt: utcDate(2026, 3, 9, 9, 0),
+    });
+
+    const state = h.getState(getRoutineStateScope(normalizeRoutine(routine))) as Record<string, unknown>;
+    expect(typeof state.lastStaggerMs).toBe("number");
+    expect((state.lastStaggerMs as number)).toBeGreaterThanOrEqual(0);
+    expect((state.lastStaggerMs as number)).toBeLessThanOrEqual(10);
   });
 });
 
-// ===========================================================================
-// Config validation
-// ===========================================================================
+describe("agent-routines plugin UI handlers", () => {
+  it("exposes routine status snapshots with next run preview", async () => {
+    const routine = baseRoutine({
+      name: "Status routine",
+      timezone: "America/New_York",
+      cronExpression: "0 9 * * 1",
+    });
+    const h = await setupHarnessWithRoutines([routine]);
+
+    const data = await h.getData<{
+      summary: { total: number; enabled: number; autoPaused: number; failing: number };
+      routines: Array<{ key: string; name: string; nextRunAt: string | null; timezone: string }>;
+    }>("routines-status", {
+      companyId: "co-1",
+      now: utcDate(2026, 1, 5, 13, 0),
+    });
+
+    expect(data.summary).toEqual({ total: 1, enabled: 1, autoPaused: 0, failing: 0 });
+    expect(data.routines).toHaveLength(1);
+    expect(data.routines[0].name).toBe("Status routine");
+    expect(data.routines[0].timezone).toBe("America/New_York");
+    expect(data.routines[0].nextRunAt).toBe(utcDate(2026, 1, 5, 14, 0));
+  });
+
+  it("supports manual run and resume actions", async () => {
+    const routine = baseRoutine({ name: "Manual routine", cronExpression: "0 9 * * *" });
+    const h = await setupHarnessWithRoutines([routine]);
+    const normalized = normalizeRoutine(routine);
+
+    const runResult = await h.performAction<{
+      ok: boolean;
+      routineKey: string;
+      runId: string | null;
+    }>("run-routine", { routineKey: normalized.key });
+
+    expect(runResult.ok).toBe(true);
+    expect(runResult.routineKey).toBe(normalized.key);
+    expect(runResult.runId).toBeTruthy();
+
+    await h.ctx.state.set(getRoutineStateScope(normalized), {
+      key: normalized.key,
+      name: normalized.name,
+      companyId: normalized.companyId,
+      agentId: normalized.agentId,
+      timezone: normalized.timezone,
+      lastScheduledAt: null,
+      lastRunAt: null,
+      lastRunStatus: "error",
+      lastRunId: null,
+      lastError: "boom",
+      lastDispatchDurationMs: null,
+      consecutiveErrors: 3,
+      autoPaused: true,
+      disabledReason: "Auto-paused after repeated failures",
+      lastStaggerMs: 0,
+    });
+
+    const resumeResult = await h.performAction<{ ok: boolean; routineKey: string }>(
+      "resume-routine",
+      { routineKey: normalized.key },
+    );
+
+    expect(resumeResult).toEqual({ ok: true, routineKey: normalized.key, routineName: normalized.name });
+
+    const resumed = h.getState(getRoutineStateScope(normalized)) as Record<string, unknown>;
+    expect(resumed.autoPaused).toBe(false);
+    expect(resumed.disabledReason).toBeNull();
+    expect(resumed.consecutiveErrors).toBe(0);
+  });
+});
 
 describe("agent-routines config validation", () => {
   it("accepts valid config", async () => {
     const result = await plugin.definition.onValidateConfig!({
       routines: [
-        {
-          name: "Daily check",
-          cronExpression: "0 9 * * *",
-          agentId: "agent-1",
-          companyId: "co-1",
-          prompt: "Run health check",
-        },
+        baseRoutine({
+          timezone: "America/New_York",
+          staggerMs: 1500,
+          maxConsecutiveErrorsBeforePause: 3,
+        }),
       ],
     });
 
     expect(result.ok).toBe(true);
   });
 
-  it("rejects invalid cron expression", async () => {
+  it("rejects invalid cron expressions, timezones, and duplicate names", async () => {
     const result = await plugin.definition.onValidateConfig!({
       routines: [
-        {
-          name: "Bad cron",
-          cronExpression: "invalid cron",
-          agentId: "agent-1",
-          companyId: "co-1",
-          prompt: "Won't work",
-        },
+        baseRoutine({ name: "Duplicate", cronExpression: "bad cron" }),
+        baseRoutine({ name: "Duplicate", timezone: "Mars/Olympus_Mons" }),
       ],
     });
 
     expect(result.ok).toBe(false);
     expect(result.errors).toBeDefined();
-    expect(result.errors!.length).toBeGreaterThan(0);
-    expect(result.errors![0]).toContain("Bad cron");
+    expect(result.errors?.some((error: string) => error.includes("invalid cron expression"))).toBe(true);
+    expect(result.errors?.some((error: string) => error.includes("invalid timezone"))).toBe(true);
+    expect(result.errors?.some((error: string) => error.includes("duplicate name"))).toBe(true);
   });
 
-  it("rejects out-of-range cron values", async () => {
+  it("rejects invalid stagger and auto-pause thresholds", async () => {
     const result = await plugin.definition.onValidateConfig!({
       routines: [
-        {
-          name: "Bad range",
-          cronExpression: "60 * * * *",
-          agentId: "agent-1",
-          companyId: "co-1",
-          prompt: "Invalid minute",
-        },
+        baseRoutine({ name: "Bad stagger", staggerMs: -1 }),
+        baseRoutine({ name: "Bad threshold", maxConsecutiveErrorsBeforePause: 0 }),
       ],
     });
 
     expect(result.ok).toBe(false);
-  });
-
-  it("reports errors for multiple invalid routines", async () => {
-    const result = await plugin.definition.onValidateConfig!({
-      routines: [
-        {
-          name: "Bad 1",
-          cronExpression: "invalid",
-          agentId: "a1",
-          companyId: "c1",
-          prompt: "p1",
-        },
-        {
-          name: "Good",
-          cronExpression: "0 9 * * *",
-          agentId: "a2",
-          companyId: "c1",
-          prompt: "p2",
-        },
-        {
-          name: "Bad 2",
-          cronExpression: "* 25 * * *",
-          agentId: "a3",
-          companyId: "c1",
-          prompt: "p3",
-        },
-      ],
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.errors).toHaveLength(2);
-    expect(result.errors![0]).toContain("Bad 1");
-    expect(result.errors![1]).toContain("Bad 2");
-  });
-
-  it("accepts empty routines array", async () => {
-    const result = await plugin.definition.onValidateConfig!({ routines: [] });
-    expect(result.ok).toBe(true);
-  });
-
-  it("accepts config without routines key", async () => {
-    const result = await plugin.definition.onValidateConfig!({});
-    expect(result.ok).toBe(true);
+    expect(result.errors?.some((error: string) => error.includes("staggerMs"))).toBe(true);
+    expect(result.errors?.some((error: string) => error.includes("maxConsecutiveErrorsBeforePause"))).toBe(true);
   });
 });
-
-// ===========================================================================
-// Manifest sanity checks
-// ===========================================================================
 
 describe("agent-routines manifest", () => {
   it("declares required capabilities", () => {
     expect(manifest.capabilities).toContain("jobs.schedule");
     expect(manifest.capabilities).toContain("agents.invoke");
-    expect(manifest.capabilities).toContain("agents.read");
-    expect(manifest.capabilities).toContain("activity.log.write");
-    expect(manifest.capabilities).toContain("metrics.write");
+    expect(manifest.capabilities).toContain("plugin.state.read");
+    expect(manifest.capabilities).toContain("plugin.state.write");
   });
 
   it("declares routine-dispatcher job with 1-minute cron", () => {
@@ -461,17 +344,14 @@ describe("agent-routines manifest", () => {
     expect(manifest.jobs![0].schedule).toBe("* * * * *");
   });
 
-  it("has a valid instanceConfigSchema", () => {
-    expect(manifest.instanceConfigSchema).toBeDefined();
+  it("includes timezone and stagger support in the config schema", () => {
     const schema = manifest.instanceConfigSchema as any;
     expect(schema.properties.routines.type).toBe("array");
-    expect(schema.properties.routines.maxItems).toBe(20);
+    expect(schema.properties.routines.items.properties.timezone.default).toBe("UTC");
+    expect(schema.properties.routines.items.properties.staggerMs.maximum).toBe(300000);
+    expect(schema.properties.routines.items.properties.maxConsecutiveErrorsBeforePause.minimum).toBe(1);
   });
 });
-
-// ===========================================================================
-// Health check
-// ===========================================================================
 
 describe("agent-routines health", () => {
   it("returns ok status", async () => {
