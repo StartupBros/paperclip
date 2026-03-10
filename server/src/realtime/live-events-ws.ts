@@ -8,7 +8,7 @@ import { agentApiKeys, companyMemberships, instanceUserRoles } from "@paperclipa
 import type { DeploymentMode, LiveEvent } from "@paperclipai/shared";
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "../middleware/logger.js";
-import { subscribeCompanyLiveEvents, subscribeGlobalLiveEvents } from "../services/live-events.js";
+import { subscribeAllLiveEvents, subscribeCompanyLiveEvents } from "../services/live-events.js";
 
 interface WsSocket {
   readyState: number;
@@ -214,7 +214,7 @@ export function setupLiveEventsWebSocketServer(
     // Also subscribe to instance-wide events (e.g. plugin.ui.updated) so all
     // connected sessions receive plugin lifecycle notifications regardless of
     // which company they are viewing.
-    const unsubGlobal = subscribeGlobalLiveEvents(sendEvent);
+    const unsubGlobal = subscribeAllLiveEvents(sendEvent);
     const unsubscribe = () => { unsubCompany(); unsubGlobal(); };
 
     cleanupByClient.set(socket, unsubscribe);
