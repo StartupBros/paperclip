@@ -11,6 +11,19 @@ import { cn, relativeTime } from "../lib/utils";
 import { ExternalLink } from "lucide-react";
 import { Identity } from "./Identity";
 
+function useElapsedTime(since: string | Date, enabled: boolean): string {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    const id = window.setInterval(() => tick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [enabled]);
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 1000));
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
 type FeedTone = "info" | "warn" | "error" | "assistant" | "tool";
 
 interface FeedItem {
@@ -415,6 +428,8 @@ function AgentRunCard({
 }) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const recent = feed.slice(-20);
+  const isRunning = run.status === "running";
+  const elapsed = useElapsedTime(run.startedAt ?? run.createdAt, isActive && recent.length === 0);
 
   useEffect(() => {
     const body = bodyRef.current;
@@ -475,7 +490,7 @@ function AgentRunCard({
       {/* Feed body */}
       <div ref={bodyRef} className="flex-1 max-h-[140px] overflow-y-auto p-2 font-mono text-[11px] space-y-1">
         {isActive && recent.length === 0 && (
-          <div className="text-xs text-muted-foreground">Waiting for output...</div>
+          <div className="text-xs text-muted-foreground">{isRunning ? `Running (${elapsed})` : `Queued (${elapsed})`}...</div>
         )}
         {!isActive && recent.length === 0 && (
           <div className="text-xs text-muted-foreground">
