@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import type { ExecutionTarget } from "@paperclipai/shared";
 import {
@@ -2741,16 +2741,12 @@ export function heartbeatService(db: Db) {
     },
 
     dismissRun: async (runId: string) => {
-      const run = await getRun(runId);
-      if (!run) return null;
-      if (run.dismissedAt) return run;
-
       const [updated] = await db
         .update(heartbeatRuns)
         .set({ dismissedAt: new Date(), updatedAt: new Date() })
-        .where(eq(heartbeatRuns.id, runId))
+        .where(and(eq(heartbeatRuns.id, runId), isNull(heartbeatRuns.dismissedAt)))
         .returning();
-      return updated ?? null;
+      return updated ?? (await getRun(runId));
     },
 
     cancelActiveForAgent: async (agentId: string) => {
