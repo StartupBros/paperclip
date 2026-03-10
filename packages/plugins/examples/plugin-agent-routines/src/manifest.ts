@@ -1,21 +1,12 @@
 import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 
-/**
- * Manifest for the Agent Routines Plugin.
- *
- * Declares a single dispatcher job on a 1-minute cron that evaluates
- * configured routines and invokes matching agents. Routines are defined
- * in the instance config — no code changes needed to add/remove routines.
- *
- * @see PLUGIN_SPEC.md §6 — Manifest
- */
 const manifest: PaperclipPluginManifestV1 = {
   id: "paperclip.agent-routines",
   apiVersion: 1,
-  version: "0.1.0",
+  version: "0.2.0",
   displayName: "Agent Routines",
   description:
-    "Run agents on cron schedules with specific prompts. Define routines in the plugin config to automatically invoke agents at the right time.",
+    "Run agents on cron schedules with prompts, timezones, jitter, persistent routine state, and failure guardrails.",
   author: "Paperclip",
   categories: ["automation"],
   capabilities: [
@@ -24,6 +15,8 @@ const manifest: PaperclipPluginManifestV1 = {
     "agents.read",
     "activity.log.write",
     "metrics.write",
+    "plugin.state.read",
+    "plugin.state.write",
   ],
   entrypoints: {
     worker: "./dist/worker.js",
@@ -39,10 +32,28 @@ const manifest: PaperclipPluginManifestV1 = {
           properties: {
             name: { type: "string", description: "Human-readable label for the routine" },
             cronExpression: { type: "string", description: "5-field cron (e.g. '0 9 * * 1-5')" },
+            timezone: {
+              type: "string",
+              description: "IANA timezone (e.g. 'UTC' or 'America/New_York')",
+              default: "UTC",
+            },
+            staggerMs: {
+              type: "integer",
+              description: "Deterministic jitter window in milliseconds",
+              minimum: 0,
+              maximum: 300000,
+              default: 0,
+            },
             agentId: { type: "string", description: "Target agent UUID" },
             companyId: { type: "string", description: "Company the agent belongs to" },
             prompt: { type: "string", description: "What the agent should do on each run" },
             enabled: { type: "boolean", default: true },
+            maxConsecutiveErrorsBeforePause: {
+              type: "integer",
+              description: "Auto-pause the routine after this many consecutive dispatch failures",
+              minimum: 1,
+              maximum: 100,
+            },
           },
           required: ["name", "cronExpression", "agentId", "companyId", "prompt"],
         },
