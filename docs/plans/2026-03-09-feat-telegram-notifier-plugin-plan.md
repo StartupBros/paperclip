@@ -20,16 +20,16 @@ Replicate the proven notifier plugin structure. The Telegram plugin exports `typ
 
 ## Acceptance Criteria
 
-- [ ] `packages/notifiers/telegram/` created with standard plugin structure
-- [ ] Plugin exports `type`, `label`, `send()`, `testConnection()`
-- [ ] `send()` formats events as MarkdownV2 messages with plain text fallback
-- [ ] `testConnection()` sends a test message and returns `{ ok, error? }`
-- [ ] `"telegram"` added to `NOTIFICATION_CHANNEL_TYPES` in `packages/shared/src/constants.ts`
-- [ ] Plugin registered in `server/src/notifications/registry.ts`
-- [ ] `botToken` added to `SENSITIVE_FIELDS` redaction map in `server/src/services/notification.ts`
-- [ ] `@paperclipai/notifier-telegram` added to `server/package.json` dependencies
-- [ ] 10-second fetch timeout with AbortController (consistent with other plugins)
-- [ ] TypeScript builds cleanly (`pnpm typecheck` from plugin dir)
+- [x] `packages/notifiers/telegram/` created with standard plugin structure
+- [x] Plugin exports `type`, `label`, `send()`, `testConnection()`
+- [x] `send()` formats events as MarkdownV2 messages with plain text fallback
+- [x] `testConnection()` sends a test message and returns `{ ok, error? }`
+- [x] `"telegram"` added to `NOTIFICATION_CHANNEL_TYPES` in `packages/shared/src/constants.ts`
+- [x] Plugin registered in `server/src/notifications/registry.ts`
+- [x] `botToken` added to `SENSITIVE_FIELDS` redaction map in `server/src/services/notification.ts`
+- [x] `@paperclipai/notifier-telegram` added to `server/package.json` dependencies
+- [x] 10-second fetch timeout with AbortController (consistent with other plugins)
+- [x] TypeScript builds cleanly (`pnpm typecheck` from plugin dir)
 
 ## Technical Approach
 

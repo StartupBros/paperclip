@@ -256,6 +256,19 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  packages/notifiers/telegram:
+    dependencies:
+      '@paperclipai/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^24.6.0
+        version: 24.12.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
   packages/notifiers/webhook:
     dependencies:
       '@paperclipai/shared':
@@ -655,6 +668,9 @@ importers:
       '@paperclipai/notifier-ntfy':
         specifier: workspace:*
         version: link:../packages/notifiers/ntfy
+      '@paperclipai/notifier-telegram':
+        specifier: workspace:*
+        version: link:../packages/notifiers/telegram
       '@paperclipai/notifier-webhook':
         specifier: workspace:*
         version: link:../packages/notifiers/webhook
