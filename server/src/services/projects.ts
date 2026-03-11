@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { projects, projectGoals, goals, projectWorkspaces, workspaceRuntimeServices } from "@paperclipai/db";
 import {
@@ -40,11 +40,14 @@ interface ProjectWithGoals extends Omit<ProjectRow, "executionWorkspacePolicy"> 
 interface ProjectShortnameRow {
   id: string;
   name: string;
+  status?: string | null;
 }
 
 interface ResolveProjectNameOptions {
   excludeProjectId?: string | null;
 }
+
+const TERMINAL_PROJECT_STATUSES = new Set(["completed", "cancelled"]);
 
 /** Batch-load goal refs for a set of projects. */
 async function attachGoals(db: Db, rows: ProjectRow[]): Promise<ProjectWithGoals[]> {
@@ -274,6 +277,7 @@ export function resolveProjectNameForUniqueShortname(
   const usedShortnames = new Set(
     existingProjects
       .filter((project) => !(options?.excludeProjectId && project.id === options.excludeProjectId))
+      .filter((project) => !project.status || !TERMINAL_PROJECT_STATUSES.has(project.status))
       .map((project) => normalizeProjectUrlKey(project.name))
       .filter((value): value is string => value !== null),
   );
@@ -371,9 +375,14 @@ export function projectService(db: Db) {
       }
 
       const existingProjects = await db
-        .select({ id: projects.id, name: projects.name })
+        .select({ id: projects.id, name: projects.name, status: projects.status })
         .from(projects)
-        .where(eq(projects.companyId, companyId));
+        .where(
+          and(
+            eq(projects.companyId, companyId),
+            notInArray(projects.status, ["completed", "cancelled"]),
+          ),
+        );
       projectData.name = resolveProjectNameForUniqueShortname(projectData.name, existingProjects);
 
       // Also write goalId to the legacy column (first goal or null)
@@ -412,9 +421,14 @@ export function projectService(db: Db) {
         const nextShortname = normalizeProjectUrlKey(projectData.name);
         if (existingShortname !== nextShortname) {
           const existingProjects = await db
-            .select({ id: projects.id, name: projects.name })
+            .select({ id: projects.id, name: projects.name, status: projects.status })
             .from(projects)
-            .where(eq(projects.companyId, existingProject.companyId));
+            .where(
+              and(
+                eq(projects.companyId, existingProject.companyId),
+                notInArray(projects.status, ["completed", "cancelled"]),
+              ),
+            );
           projectData.name = resolveProjectNameForUniqueShortname(projectData.name, existingProjects, {
             excludeProjectId: id,
           });
