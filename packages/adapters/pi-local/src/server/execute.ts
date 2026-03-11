@@ -16,7 +16,7 @@ import {
   renderTemplate,
   runChildProcess,
   resolveHeartbeatPromptTemplate,
-  DEFAULT_HEARTBEAT_PROMPT_TEMPLATE,
+  buildHeartbeatPromptRenderData,
 } from "@paperclipai/adapter-utils/server-utils";
 import { isPiUnknownSessionError, parsePiJsonl } from "./parse.js";
 import { ensurePiModelConfiguredAndAvailable } from "./models.js";
@@ -272,44 +272,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     systemPromptExtension = promptTemplate;
   }
 
-  const renderedSystemPromptExtension = renderTemplate(systemPromptExtension, {
-    agentId: agent.id,
-    companyId: agent.companyId,
-    runId,
-    company: { id: agent.companyId },
-    agent,
-    run: { id: runId, source: "on_demand" },
-    context,
-    defaultPrompt: renderTemplate(DEFAULT_HEARTBEAT_PROMPT_TEMPLATE, {
-      agentId: agent.id,
-      companyId: agent.companyId,
-      runId,
-      company: { id: agent.companyId },
-      agent,
-      run: { id: runId, source: "on_demand" },
-      context,
-    }),
-  });
+  const promptData = buildHeartbeatPromptRenderData({ agent, runId, context });
+  const renderedSystemPromptExtension = renderTemplate(systemPromptExtension, promptData);
 
   // User prompt is simple - just the rendered prompt template without instructions
-  const userPrompt = renderTemplate(promptTemplate, {
-    agentId: agent.id,
-    companyId: agent.companyId,
-    runId,
-    company: { id: agent.companyId },
-    agent,
-    run: { id: runId, source: "on_demand" },
-    context,
-    defaultPrompt: renderTemplate(DEFAULT_HEARTBEAT_PROMPT_TEMPLATE, {
-      agentId: agent.id,
-      companyId: agent.companyId,
-      runId,
-      company: { id: agent.companyId },
-      agent,
-      run: { id: runId, source: "on_demand" },
-      context,
-    }),
-  });
+  const userPrompt = renderTemplate(promptTemplate, promptData);
 
   const commandNotes = (() => {
     if (!resolvedInstructionsFilePath) return [] as string[];

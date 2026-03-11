@@ -19,7 +19,7 @@ import {
   renderTemplate,
   runChildProcess,
   resolveHeartbeatPromptTemplate,
-  DEFAULT_HEARTBEAT_PROMPT_TEMPLATE,
+  buildHeartbeatPromptRenderData,
 } from "@paperclipai/adapter-utils/server-utils";
 import {
   parseClaudeStreamJson,
@@ -362,24 +362,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       `[paperclip] Claude session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
     );
   }
-  const prompt = renderTemplate(promptTemplate, {
-    agentId: agent.id,
-    companyId: agent.companyId,
-    runId,
-    company: { id: agent.companyId },
-    agent,
-    run: { id: runId, source: "on_demand" },
-    context,
-    defaultPrompt: renderTemplate(DEFAULT_HEARTBEAT_PROMPT_TEMPLATE, {
-      agentId: agent.id,
-      companyId: agent.companyId,
-      runId,
-      company: { id: agent.companyId },
-      agent,
-      run: { id: runId, source: "on_demand" },
-      context,
-    }),
-  });
+  const promptData = buildHeartbeatPromptRenderData({ agent, runId, context });
+  const prompt = renderTemplate(promptTemplate, promptData);
 
   const buildClaudeArgs = (resumeSessionId: string | null) => {
     const args = ["--print", "-", "--output-format", "stream-json", "--verbose"];

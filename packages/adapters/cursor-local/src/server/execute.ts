@@ -17,7 +17,7 @@ import {
   renderTemplate,
   runChildProcess,
   resolveHeartbeatPromptTemplate,
-  DEFAULT_HEARTBEAT_PROMPT_TEMPLATE,
+  buildHeartbeatPromptRenderData,
 } from "@paperclipai/adapter-utils/server-utils";
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "../index.js";
 import { parseCursorJsonl, isCursorUnknownSessionError } from "./parse.js";
@@ -315,24 +315,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     return notes;
   })();
 
-  const renderedPrompt = renderTemplate(promptTemplate, {
-    agentId: agent.id,
-    companyId: agent.companyId,
-    runId,
-    company: { id: agent.companyId },
-    agent,
-    run: { id: runId, source: "on_demand" },
-    context,
-    defaultPrompt: renderTemplate(DEFAULT_HEARTBEAT_PROMPT_TEMPLATE, {
-      agentId: agent.id,
-      companyId: agent.companyId,
-      runId,
-      company: { id: agent.companyId },
-      agent,
-      run: { id: runId, source: "on_demand" },
-      context,
-    }),
-  });
+  const promptData = buildHeartbeatPromptRenderData({ agent, runId, context });
+  const renderedPrompt = renderTemplate(promptTemplate, promptData);
   const paperclipEnvNote = renderPaperclipEnvNote(env);
   const prompt = `${instructionsPrefix}${paperclipEnvNote}${renderedPrompt}`;
 
