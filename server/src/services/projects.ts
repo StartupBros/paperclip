@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { projects, projectGoals, goals, projectWorkspaces, workspaceRuntimeServices } from "@paperclipai/db";
 import {
@@ -377,12 +377,7 @@ export function projectService(db: Db) {
       const existingProjects = await db
         .select({ id: projects.id, name: projects.name, status: projects.status })
         .from(projects)
-        .where(
-          and(
-            eq(projects.companyId, companyId),
-            notInArray(projects.status, ["completed", "cancelled"]),
-          ),
-        );
+        .where(eq(projects.companyId, companyId));
       projectData.name = resolveProjectNameForUniqueShortname(projectData.name, existingProjects);
 
       // Also write goalId to the legacy column (first goal or null)
@@ -423,12 +418,7 @@ export function projectService(db: Db) {
           const existingProjects = await db
             .select({ id: projects.id, name: projects.name, status: projects.status })
             .from(projects)
-            .where(
-              and(
-                eq(projects.companyId, existingProject.companyId),
-                notInArray(projects.status, ["completed", "cancelled"]),
-              ),
-            );
+            .where(eq(projects.companyId, existingProject.companyId));
           projectData.name = resolveProjectNameForUniqueShortname(projectData.name, existingProjects, {
             excludeProjectId: id,
           });
