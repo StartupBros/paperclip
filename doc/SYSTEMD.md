@@ -29,11 +29,11 @@ Confirm the binary path before writing the service file. In many setups it will 
 
 ```sh
 sudo useradd --system --create-home --home-dir /var/lib/paperclip --shell /usr/sbin/nologin paperclip
-sudo mkdir -p /var/lib/paperclip
-sudo chown -R paperclip:paperclip /var/lib/paperclip
 ```
 
 Paperclip will store its default embedded PostgreSQL data, config, backups, secrets key, and local storage under `PAPERCLIP_HOME`.
+
+If you point `PAPERCLIP_HOME` somewhere else, make sure that directory exists and is writable by the `paperclip` user.
 
 ## 3. Onboard once as the Paperclip user
 
@@ -102,6 +102,14 @@ sudo journalctl -u paperclip -f
 
 If you prefer not to edit the unit for every setting, create an environment file.
 
+Create the directory and env file first:
+
+```sh
+sudo install -d -m 0750 /etc/paperclip
+sudo editor /etc/paperclip/paperclip.env
+sudo chmod 0640 /etc/paperclip/paperclip.env
+```
+
 Example: `/etc/paperclip/paperclip.env`
 
 ```sh
@@ -115,11 +123,26 @@ PORT=3100
 # PAPERCLIP_DEPLOYMENT_EXPOSURE=private
 ```
 
-Then update the unit:
+Then update the unit by replacing the inline `Environment=` settings with `EnvironmentFile=`:
 
 ```ini
+[Service]
+Type=simple
+User=paperclip
+Group=paperclip
+WorkingDirectory=/var/lib/paperclip
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=/etc/paperclip/paperclip.env
 ExecStart=/usr/bin/env paperclipai run
+Restart=on-failure
+RestartSec=5
+```
+
+After editing the unit, reload and restart the service:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl restart paperclip
 ```
 
 ## Embedded PostgreSQL vs external PostgreSQL
