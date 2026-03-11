@@ -49,7 +49,7 @@ function DocsRedirectPage() {
         </p>
         <div className="mt-4 flex gap-2">
           <Button asChild>
-            <a href={PAPERCLIP_DOCS_URL} rel="noreferrer">
+            <a href={PAPERCLIP_DOCS_URL} target="_blank" rel="noreferrer noopener">
               Open docs
             </a>
           </Button>
