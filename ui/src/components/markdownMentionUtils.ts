@@ -50,12 +50,12 @@ export function detectMention(container: HTMLElement): MentionState | null {
   const range = sel.getRangeAt(0);
   if (!container.contains(range.startContainer)) return null;
 
-  const inlineState =
-    range.startContainer.nodeType === Node.TEXT_NODE
-      ? extractInlineMentionState(range.startContainer as Text, range.startOffset)
-      : null;
+  const isTextNodeCaret = range.startContainer.nodeType === Node.TEXT_NODE;
+  const inlineState = isTextNodeCaret
+    ? extractInlineMentionState(range.startContainer as Text, range.startOffset)
+    : null;
 
-  const query = inlineState?.query ?? extractMentionQuery(container, range);
+  const query = isTextNodeCaret ? inlineState?.query ?? null : extractMentionQuery(container, range);
   if (query == null) return null;
 
   const rect = typeof range.getBoundingClientRect === "function"
