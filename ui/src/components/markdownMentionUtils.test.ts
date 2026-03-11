@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { detectMention } from "./markdownMentionUtils";
+
+afterEach(() => {
+  document.body.innerHTML = "";
+  window.getSelection()?.removeAllRanges();
+});
 
 describe("detectMention", () => {
   it("detects mentions when the caret is inside a text node", () => {
@@ -45,6 +50,27 @@ describe("detectMention", () => {
     expect(state?.textNode).toBeNull();
     expect(state?.atPos).toBeNull();
     expect(state?.endPos).toBeNull();
+  });
+
+  it("does not leak mentions from earlier blocks for text-node carets", () => {
+    const container = document.createElement("div");
+    container.contentEditable = "true";
+    const first = document.createElement("p");
+    first.appendChild(document.createTextNode("@alice"));
+    const second = document.createElement("p");
+    const secondText = document.createTextNode("hello world");
+    second.appendChild(secondText);
+    container.append(first, second);
+    document.body.appendChild(container);
+
+    const range = document.createRange();
+    range.setStart(secondText, secondText.textContent!.length);
+    range.collapse(true);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    expect(detectMention(container)).toBeNull();
   });
 
   it("returns null when there is no active mention", () => {
