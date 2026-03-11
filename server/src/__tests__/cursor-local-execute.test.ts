@@ -160,7 +160,7 @@ describe("cursor execute", () => {
           env: {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
           },
-          promptTemplate: "Custom prefix. {{defaultPrompt}} Custom suffix.",
+          promptTemplate: "Custom prefix. {{ defaultPrompt }} Custom suffix.",
         },
         context: {},
         authToken: "run-jwt-token",
