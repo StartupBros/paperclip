@@ -50,12 +50,26 @@ async function saveAgentState(ctx: PluginContext, agentId: string, state: AgentC
   );
 }
 
-/** Maintain a registry of agent IDs the plugin has seen, for cron job scanning. */
+/**
+ * Maintain a registry of agent IDs the plugin has seen, for cron job scanning.
+ *
+ * Note: this uses a shared instance-level map with a read-modify-write pattern.
+ * The race (two events overwriting each other) is mitigated by the single-threaded
+ * worker model — the host dispatches events sequentially via JSON-RPC. A missed
+ * agent would be re-added on its next event.
+ */
 async function trackAgent(ctx: PluginContext, agentId: string, companyId: string): Promise<void> {
   const key = { scopeKind: "instance" as const, stateKey: TRACKED_AGENTS_KEY };
   const existing = (asRecord(await ctx.state.get(key)) ?? {}) as Record<string, string>;
   if (existing[agentId]) return;
   existing[agentId] = companyId;
+  await ctx.state.set(key, existing);
+}
+
+async function untrackAgent(ctx: PluginContext, agentId: string): Promise<void> {
+  const key = { scopeKind: "instance" as const, stateKey: TRACKED_AGENTS_KEY };
+  const existing = (asRecord(await ctx.state.get(key)) ?? {}) as Record<string, string>;
+  delete existing[agentId];
   await ctx.state.set(key, existing);
 }
 
@@ -325,14 +339,9 @@ const plugin = definePlugin({
         state.consecutiveNoProgress += 1;
       }
 
-      // Token velocity detector
+      // Token velocity detector — evaluate BEFORE appending so the spike
+      // does not dilute the rolling average it is compared against.
       const tokenCost = extractTokenCost(payload);
-      if (tokenCost !== null) {
-        state.tokenCostHistory.push(tokenCost);
-        if (state.tokenCostHistory.length > config.tokenVelocityWindowSize) {
-          state.tokenCostHistory = state.tokenCostHistory.slice(-config.tokenVelocityWindowSize);
-        }
-      }
 
       // Evaluate thresholds
       const tripReasons: TripReason[] = [];
@@ -343,6 +352,13 @@ const plugin = definePlugin({
 
       if (tokenCost !== null && shouldTripVelocity(state.tokenCostHistory, config, tokenCost)) {
         tripReasons.push("token_velocity");
+      }
+
+      if (tokenCost !== null) {
+        state.tokenCostHistory.push(tokenCost);
+        if (state.tokenCostHistory.length > config.tokenVelocityWindowSize) {
+          state.tokenCostHistory = state.tokenCostHistory.slice(-config.tokenVelocityWindowSize);
+        }
       }
 
       state.lastEventAt = event.occurredAt;
@@ -390,14 +406,8 @@ const plugin = definePlugin({
       state.consecutiveFailures += 1;
       // Do NOT reset no-progress counter — failed runs don't prove progress
 
-      // Token velocity detector (usage may be present even on failure)
+      // Token velocity detector — evaluate BEFORE appending (same fix as run.finished)
       const tokenCost = extractTokenCost(payload);
-      if (tokenCost !== null) {
-        state.tokenCostHistory.push(tokenCost);
-        if (state.tokenCostHistory.length > config.tokenVelocityWindowSize) {
-          state.tokenCostHistory = state.tokenCostHistory.slice(-config.tokenVelocityWindowSize);
-        }
-      }
 
       // Evaluate thresholds
       const tripReasons: TripReason[] = [];
@@ -408,6 +418,13 @@ const plugin = definePlugin({
 
       if (tokenCost !== null && shouldTripVelocity(state.tokenCostHistory, config, tokenCost)) {
         tripReasons.push("token_velocity");
+      }
+
+      if (tokenCost !== null) {
+        state.tokenCostHistory.push(tokenCost);
+        if (state.tokenCostHistory.length > config.tokenVelocityWindowSize) {
+          state.tokenCostHistory = state.tokenCostHistory.slice(-config.tokenVelocityWindowSize);
+        }
       }
 
       state.lastEventAt = event.occurredAt;
@@ -432,15 +449,18 @@ const plugin = definePlugin({
         const state = await getAgentState(ctx, agentId);
         if (state.circuitState !== "open" || !state.trippedAt) continue;
 
+        // Use per-agent merged config for cooldown, not just instance config
+        const agentConfig = await getMergedConfig(ctx, agentId, companyId);
         const elapsed = Date.now() - new Date(state.trippedAt).getTime();
-        const cooldownMs = instanceConfig.recovery.cooldownMinutes * 60 * 1000;
+        const cooldownMs = agentConfig.recovery.cooldownMinutes * 60 * 1000;
         if (elapsed < cooldownMs) continue;
 
         try {
           const agent = await ctx.agents.get(agentId, companyId);
           if (!agent) {
-            // Agent deleted — clean up
+            // Agent deleted — clean up state and tracking registry
             await ctx.state.delete({ scopeKind: "agent", scopeId: agentId, stateKey: CIRCUIT_STATE_KEY });
+            await untrackAgent(ctx, agentId);
             continue;
           }
 
@@ -450,10 +470,11 @@ const plugin = definePlugin({
             continue;
           }
 
-          // Resume for trial run
-          await ctx.agents.resume(agentId, companyId);
+          // Persist half-open state BEFORE resuming — if resume fails, state
+          // is still consistent and the next tick will retry.
           state.circuitState = "half-open";
           await saveAgentState(ctx, agentId, state);
+          await ctx.agents.resume(agentId, companyId);
 
           await ctx.activity.log({
             companyId,

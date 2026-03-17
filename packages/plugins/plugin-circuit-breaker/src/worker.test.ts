@@ -269,6 +269,34 @@ describe("circuit-breaker plugin", () => {
     expect(state.tripReasons).toContain("token_velocity");
   });
 
+  it("trips on near-threshold spike (3.1x with multiplier 3.0)", async () => {
+    // Regression test: spike must NOT dilute the rolling average before comparison.
+    // 12 baseline runs at 1000 tokens → avg = 1000, threshold = 3000.
+    // A 3100-token spike (3.1x) should trip.
+    for (let i = 0; i < 12; i++) {
+      await harness.emit(
+        "agent.run.finished",
+        finishedEvent({ usage: { totalTokens: 1000 } }),
+        BASE,
+      );
+    }
+
+    await harness.emit(
+      "agent.run.finished",
+      finishedEvent({ usage: { totalTokens: 3100 } }),
+      BASE,
+    );
+
+    const state = harness.getState({
+      scopeKind: "agent",
+      scopeId: "agent-1",
+      stateKey: "circuit",
+    }) as any;
+
+    expect(state.circuitState).toBe("open");
+    expect(state.tripReasons).toContain("token_velocity");
+  });
+
   it("skips velocity check during cold start (insufficient history)", async () => {
     // Only 5 runs — less than ceil(20/2) = 10
     for (let i = 0; i < 5; i++) {
