@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import type { BillingType } from "@paperclipai/shared";
 import {
@@ -3435,6 +3435,18 @@ export function heartbeatService(db: Db) {
     },
 
     cancelRun: (runId: string) => cancelRunInternal(runId),
+
+    dismissRun: async (runId: string) => {
+      const [updated] = await db
+        .update(heartbeatRuns)
+        .set({ dismissedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(heartbeatRuns.id, runId), isNull(heartbeatRuns.dismissedAt)))
+        .returning();
+      return {
+        run: updated ?? (await getRun(runId)),
+        wasNewlyDismissed: !!updated,
+      };
+    },
 
     cancelActiveForAgent: (agentId: string) => cancelActiveForAgentInternal(agentId),
 

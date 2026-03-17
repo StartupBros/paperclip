@@ -1522,6 +1522,32 @@ export function agentRoutes(db: Db) {
     res.json(run);
   });
 
+  router.post("/heartbeat-runs/:runId/dismiss", async (req, res) => {
+    assertBoard(req);
+    const runId = req.params.runId as string;
+    const existing = await heartbeat.getRun(runId);
+    if (!existing) {
+      res.status(404).json({ error: "Heartbeat run not found" });
+      return;
+    }
+    if (!existing.dismissedAt && !["failed", "timed_out"].includes(existing.status)) {
+      res.status(422).json({ error: "Only failed or timed-out runs can be dismissed" });
+      return;
+    }
+    const { run, wasNewlyDismissed } = await heartbeat.dismissRun(runId);
+    if (wasNewlyDismissed) {
+      await logActivity(db, {
+        companyId: existing.companyId,
+        actorType: "system",
+        action: "heartbeat.dismissed",
+        entityType: "heartbeat_run",
+        entityId: runId,
+        details: { agentId: existing.agentId, status: existing.status },
+      });
+    }
+    res.json(run);
+  });
+
   router.get("/heartbeat-runs/:runId/events", async (req, res) => {
     const runId = req.params.runId as string;
     const run = await heartbeat.getRun(runId);
