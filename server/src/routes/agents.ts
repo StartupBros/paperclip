@@ -1530,6 +1530,7 @@ export function agentRoutes(db: Db) {
       res.status(404).json({ error: "Heartbeat run not found" });
       return;
     }
+    assertCompanyAccess(req, existing.companyId);
     if (!existing.dismissedAt && !["failed", "timed_out"].includes(existing.status)) {
       res.status(422).json({ error: "Only failed or timed-out runs can be dismissed" });
       return;
@@ -1538,7 +1539,8 @@ export function agentRoutes(db: Db) {
     if (wasNewlyDismissed) {
       await logActivity(db, {
         companyId: existing.companyId,
-        actorType: "system",
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
         action: "heartbeat.dismissed",
         entityType: "heartbeat_run",
         entityId: runId,
